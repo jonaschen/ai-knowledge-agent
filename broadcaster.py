@@ -1,15 +1,18 @@
 import os
 import json
 import re
+from dotenv import load_dotenv
 from google.cloud import texttospeech_v1beta1 as tts
 from typing import List
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
+load_dotenv()
+
 # 設定輸出檔案
 OUTPUT_FILE = "output_podcast.mp3"
-PROJECT_ID = "project-391688be-0f68-469e-813" 
-LOCATION = "us-central1"
+PROJECT_ID = os.getenv("PROJECT_ID", "project-391688be-0f68-469e-813")
+LOCATION = os.getenv("LOCATION", "us-central1")
 
 def generate_podcast_script(technical_doc: str):
     """

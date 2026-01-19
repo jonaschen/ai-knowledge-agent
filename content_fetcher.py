@@ -1,12 +1,15 @@
 import os
 import requests
+from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
 from typing import Optional
 
+load_dotenv()
+
 # 請將你剛剛建立的 API Key 填入這裡
 # 注意：真實專案中應該用環境變數 os.getenv("YOUTUBE_API_KEY")
-YOUTUBE_API_KEY = "AIzaSyDKh34tVT_qwlWfXCaZUIyHJyKEnBZwrmc" 
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "AIzaSyDKh34tVT_qwlWfXCaZUIyHJyKEnBZwrmc")
 
 def get_hn_comments(book_title: str) -> str:
     """
