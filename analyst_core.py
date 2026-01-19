@@ -1,3 +1,9 @@
+"""
+Analyst Core Module
+-------------------
+Implements the Analyst Agent using a Reflexion Loop pattern via LangGraph.
+Flow: Router -> Draft -> Critique -> Revise -> Critique -> ... -> End
+"""
 import os
 import json
 from typing import TypedDict, Literal
@@ -11,6 +17,7 @@ load_dotenv()
 # --- 1. 配置與模型 ---
 PROJECT_ID = os.getenv("PROJECT_ID", "project-391688be-0f68-469e-813")
 LOCATION = os.getenv("LOCATION", "us-central1")
+MAX_RETRIES = 3
 
 # 使用具備思考能力的 2.5 Pro
 llm = ChatVertexAI(
@@ -83,7 +90,10 @@ CRITIC_PROMPT = """
 # --- 4. 節點函數 ---
 
 def router_node(state: AnalysisState):
-    """分類節點：決定走哪條路"""
+    """
+    Router Node: Classifies the book type (Instructional vs Narrative).
+    This determines the strategy for the Analyst Agent.
+    """
     print("--- [Router] 正在分析書籍類型 ---")
     response = llm.invoke([
         SystemMessage(content=ROUTER_PROMPT),
@@ -101,6 +111,9 @@ def router_node(state: AnalysisState):
     return {"book_type": decision}
 
 def draft_node(state: AnalysisState):
+    """
+    Draft Node: Generates the initial analysis based on the selected strategy.
+    """
     book_type = state["book_type"]
     print(f"--- [Phase 1] 生成初稿 (Strategy: {book_type}) ---")
     
@@ -118,6 +131,10 @@ def draft_node(state: AnalysisState):
     return {"draft_analysis": response.content, "revision_count": 1}
 
 def critique_node(state: AnalysisState):
+    """
+    Critique Node: Evaluates the draft against strict engineering standards.
+    Acts as the 'Reflexion' step where the agent critiques its own work.
+    """
     print(f"--- [Phase 2] 代碼審查 (Review Round {state.get('revision_count')}) ---")
     response = llm.invoke([
         SystemMessage(content=CRITIC_PROMPT),
@@ -126,6 +143,10 @@ def critique_node(state: AnalysisState):
     return {"critique_feedback": response.content}
 
 def revise_node(state: AnalysisState):
+    """
+    Revise Node: Rewrites the analysis based on the critique feedback.
+    Increments the revision count.
+    """
     print("--- [Phase 3] 重構中 (Refactoring) ---")
     # 這裡也要根據類型選擇 Prompt 來保持一致性
     book_type = state["book_type"]
@@ -145,13 +166,19 @@ def revise_node(state: AnalysisState):
 # --- 5. 圖構建 ---
 
 def should_continue(state: AnalysisState):
+    """
+    Decides whether to continue the loop (revise) or end.
+    Conditions to End:
+    1. Critique says "LGTM".
+    2. Max retries reached.
+    """
     feedback = state['critique_feedback']
     count = state['revision_count']
     
     if "LGTM" in feedback:
         print("--- Review 通過 (LGTM) ---")
         return END
-    if count >= 3:
+    if count >= MAX_RETRIES:
         print("--- Max Retries Hit ---")
         return END
     return "revise"
