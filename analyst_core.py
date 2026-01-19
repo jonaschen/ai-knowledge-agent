@@ -1,13 +1,16 @@
 import os
 import json
 from typing import TypedDict, Literal
+from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
+load_dotenv()
+
 # --- 1. 配置與模型 ---
-PROJECT_ID = "project-391688be-0f68-469e-813" 
-LOCATION = "us-central1"
+PROJECT_ID = os.getenv("PROJECT_ID", "project-391688be-0f68-469e-813")
+LOCATION = os.getenv("LOCATION", "us-central1")
 
 # 使用具備思考能力的 2.5 Pro
 llm = ChatVertexAI(

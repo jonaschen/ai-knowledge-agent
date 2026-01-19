@@ -1,7 +1,11 @@
 # analyst.py (深度優化版)
+import os
 import vertexai
 from vertexai.preview.generative_models import GenerativeModel
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def generate_script(book_title, book_description, project_id):
     """
@@ -10,7 +14,7 @@ def generate_script(book_title, book_description, project_id):
     print(f"正在深度解析書籍: {book_title}...")
     
     # 請根據您上一步的測試，確認使用可用的模型 (如 gemini-2.0-flash-exp)
-    vertexai.init(project=project_id, location="us-central1") # 或 asia-northeast1
+    vertexai.init(project=project_id, location=os.getenv("LOCATION", "us-central1")) # 或 asia-northeast1
     
     # --- 核心升級：工程師思維轉譯 Prompt ---
     # 這裡實作了報告中提到的 "Isomorphic Mapping" (同構映射) 
@@ -70,6 +74,6 @@ def generate_script(book_title, book_description, project_id):
 # ... (if __name__ == "__main__": 部分保持不變)
 if __name__ == "__main__":
     # 測試用 (請換成您的 Project ID)
-    PROJECT_ID = "ai-biz-learner" 
+    PROJECT_ID = os.getenv("PROJECT_ID", "ai-biz-learner")
     sample_script = generate_script("The Lean Startup", "MVP is about validating learning.", PROJECT_ID)
     print(json.dumps(sample_script, indent=2, ensure_ascii=False))

@@ -1,0 +1,9 @@
+python-dotenv
+langgraph
+langchain-google-vertexai
+langchain-core
+google-cloud-texttospeech
+google-cloud-aiplatform
+requests
+google-api-python-client
+youtube-transcript-api
