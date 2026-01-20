@@ -8,7 +8,7 @@ os.environ["LOCATION"] = "us-central1"
 
 # Mock ChatVertexAI before importing curator
 with patch('langchain_google_vertexai.ChatVertexAI') as MockChatVertexAI:
-    import curator
+    from src import curator
 
 class TestCurator(unittest.TestCase):
     def setUp(self):
