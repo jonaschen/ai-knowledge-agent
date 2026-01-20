@@ -116,12 +116,22 @@ def verify_source_reliability(book: dict) -> dict:
             SystemMessage(content=prompt)
         ])
         content = response.content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3]
-        elif content.startswith("```"):
-            content = content[3:-3]
 
-        result = json.loads(content)
+        # Robust JSON extraction
+        try:
+            # Find the first '{' and the last '}'
+            start_index = content.find('{')
+            end_index = content.rfind('}')
+
+            if start_index != -1 and end_index != -1:
+                json_str = content[start_index : end_index + 1]
+                result = json.loads(json_str)
+            else:
+                # Fallback: try to load the whole content if no braces found (unlikely for valid JSON)
+                result = json.loads(content)
+        except json.JSONDecodeError:
+            print(f"JSON Parsing Failed. Content: {content[:100]}...")
+            return {"score": 5.0, "reason": "JSON parsing failed, using default score."}
 
         # Defensive coding: Ensure keys exist
         score = result.get('score', 5.0)
