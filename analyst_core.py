@@ -156,6 +156,7 @@ def revise_node(state: AnalysisState):
     請根據 Review 意見重寫分析。
     Review 意見：{state['critique_feedback']}
     原草稿：{state['draft_analysis']}
+    原始文本：{state['original_text']}
     """
     response = llm.invoke([
         SystemMessage(content=sys_msg),
