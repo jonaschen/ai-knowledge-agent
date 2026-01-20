@@ -80,9 +80,10 @@ CRITIC_PROMPT = """
 你是 Linus Torvalds 風格的審查員。
 審查這份將商業/歷史內容轉化為工程系統的文檔。
 確保：
-1. 隱喻準確且不過度解讀。
-2. **特別檢查**：如果原文是歷史災難，轉譯後的文檔是否保持了專業性，沒有將受害者變成數據包？
-3. 是否去除了廢話？
+1. **嚴格檢查幻覺 (Hallucinations)**：分析中的每一個論點、隱喻或事件必須嚴格基於「原始文本」。如果發現分析中出現了原文不存在的情節或數據，必須嚴厲指出。
+2. 隱喻準確且不過度解讀。
+3. **特別檢查**：如果原文是歷史災難，轉譯後的文檔是否保持了專業性，沒有將受害者變成數據包？
+4. 是否去除了廢話？
 
 如果通過，回覆 "LGTM"。否則列出修改建議。
 """
@@ -138,7 +139,7 @@ def critique_node(state: AnalysisState):
     print(f"--- [Phase 2] 代碼審查 (Review Round {state.get('revision_count')}) ---")
     response = llm.invoke([
         SystemMessage(content=CRITIC_PROMPT),
-        HumanMessage(content=f"待審查文檔：\n{state['draft_analysis']}")
+        HumanMessage(content=f"原始文本：\n{state['original_text']}\n\n待審查文檔：\n{state['draft_analysis']}")
     ])
     return {"critique_feedback": response.content}
 
