@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from content_fetcher import get_hn_comments
 
 load_dotenv()
 
@@ -26,7 +25,7 @@ llm = ChatVertexAI(
 class CuratorState(TypedDict):
     topic: str                  # 用戶想學的主題 (e.g., "B2B Sales")
     raw_candidates: List[dict]  # Google Books 找到的書
-    vetted_books: List[dict]    # 經過 HN 驗證的書
+    vetted_books: List[dict]    # 經過 Reliability 驗證的書
     selected_book: dict         # 最終選定的一本書
 
 # --- 2. 工具函數 (API Clients) ---
@@ -55,85 +54,72 @@ def search_google_books(query: str, max_results=20):
                 books.append({
                     "title": info.get("title"),
                     "authors": info.get("authors", []),
+                    "publisher": info.get("publisher", "Unknown Publisher"),
+                    "publishedDate": info.get("publishedDate", "Unknown Date"),
                     "description": info.get("description", ""),
                     "rating": info.get("averageRating", 0),
                     "ratingsCount": info.get("ratingsCount", 0)
                 })
+        else:
+            print(f"Google Books API Response (No items): {data}")
         return books
     except Exception as e:
         print(f"Google Books API Error: {e}")
         return []
 
-def get_hn_sentiment(book_title: str):
+def verify_source_reliability(book: dict) -> dict:
     """
-    從 Hacker News (Algolia) 獲取工程師評價
-    報告中提到的 'Engineer-Fit Algorithm' 的簡化版 [cite: 53]
+    使用 LLM 驗證書籍的可靠性 (Reliability Verification)
+    替代原本的 Hacker News Score
     """
-    url = "http://hn.algolia.com/api/v1/search"
-    # 搜索這本書的討論串
-    params = {
-        "query": book_title,
-        "tags": "story",
-        "numericFilters": "points>20" # 只看有點熱度的討論
-    }
-    try:
-        resp = requests.get(url, params=params)
-        data = resp.json()
-        
-        hits = data.get("hits", [])
-        if not hits:
-            return {"score": 0, "comments_count": 0, "top_comment": ""}
-            
-        # 計算熱度 (簡單累加 points)
-        total_points = sum(hit.get("points", 0) for hit in hits)
-        total_comments = sum(hit.get("num_comments", 0) for hit in hits)
-        
-        print(f"  -> Found HN discussions for '{book_title}': {total_points} points")
-        
-        return {
-            "score": total_points,
-            "comments_count": total_comments,
-            "top_discussion_id": hits[0].get("objectID") if hits else None
-        }
-    except Exception as e:
-        print(f"HN API Error: {e}")
-        return {"score": 0}
+    print(f"--- Verifying Reliability: {book['title']} ---")
 
-def analyze_sentiment(comments_text: str) -> dict:
-    """使用 LLM 分析評論情感"""
-    if not comments_text:
-        return {"score": 0.0, "summary": "No comments available."}
+    prompt = f"""
+    You are a strictly critical librarian and technical book curator.
+    Evaluate the reliability and credibility of the following book for a professional audience.
 
-    print("  -> Analyzing sentiment of comments...")
-    prompt = """
-    You are a sentiment analyzer for Hacker News comments.
-    Analyze the following comments about a book.
-    Determine the overall sentiment score from -1.0 (very negative) to 1.0 (very positive).
-    Also provide a brief summary of the engineers' opinions (max 2 sentences).
+    Title: {book['title']}
+    Author: {book['authors']}
+    Publisher: {book['publisher']}
+    Date: {book['publishedDate']}
+    Description: {book['description']}
+
+    Criteria:
+    1. **Author Authority**: Is the author a known expert or practitioner in the field?
+    2. **Publisher Reputation**: Is the publisher reputable for technical/business books (e.g., O'Reilly, Pearson, Wiley, Harvard Business Review) vs self-published/unknown?
+    3. **Content Depth**: Does the description suggest deep, actionable insights or superficial fluff?
+
+    Score the book from 0 to 10 (10 being highest reliability/quality).
+    Provide a brief reason.
 
     Return ONLY a JSON object:
-    {
-        "score": 0.5,
-        "summary": "Engineers found the book practical but outdated."
-    }
+    {{
+        "score": 8.5,
+        "reason": "Reputable publisher (O'Reilly) and author is a known expert."
+    }}
     """
 
     try:
         response = llm.invoke([
-            SystemMessage(content=prompt),
-            HumanMessage(content=comments_text[:5000]) # Limit context to avoid overflow/cost
+            SystemMessage(content=prompt)
         ])
         content = response.content.strip()
-        # Clean up code blocks if present
         if content.startswith("```json"):
             content = content[7:-3]
         elif content.startswith("```"):
             content = content[3:-3]
 
-        return json.loads(content)
+        result = json.loads(content)
+
+        # Defensive coding: Ensure keys exist
+        score = result.get('score', 5.0)
+        reason = result.get('reason', "No reason provided.")
+
+        print(f"  -> Reliability Score: {score} ({reason})")
+        return {"score": score, "reason": reason}
     except Exception as e:
-        print(f"Sentiment Analysis Error: {e}")
-        return {"score": 0.0, "summary": "Analysis failed."}
+        print(f"Reliability Verification Error: {e}")
+        return {"score": 5.0, "reason": "Verification failed, using default score."}
 
 # --- 3. 節點邏輯 ---
 
@@ -152,97 +138,41 @@ def search_node(state: CuratorState):
 
 def validation_node(state: CuratorState):
     candidates = state["raw_candidates"]
-    topic = state["topic"]
     vetted = []
     
-    print("--- 正在進行 Hacker News 信號驗證 ---")
+    print("--- 正在進行 Reliability Verification ---")
     for book in candidates:
         g_rating = book.get("rating", 0) or 0
-        g_count = book.get("ratingsCount", 0) or 0
-
-        # [修正] 放寬條件：
-        # 只過濾掉明確的爛書 (>0 但 <3.0)。
-        # 允許 0/0 (無評分) 的書通過，因為它們可能是冷門佳作，稍後看 HN 反應。
-        if g_rating > 0 and g_rating < 3.0:
-            print(f"  -> Skipping '{book['title']}' (Low quality: {g_rating}/{g_count})")
-            continue
-
-        hn_data = get_hn_sentiment(book["title"])
-        hn_score = hn_data["score"]
         
-        # 優化：相關性懲罰 (Relevance Penalty)
-        relevance_score = 1.0
-        topic_words = set(topic.lower().split())
-        title_words = set(book["title"].lower().split())
+        # Reliability Check
+        reliability = verify_source_reliability(book)
+        r_score = reliability["score"]
         
-        # 計算交集
-        common_words = topic_words.intersection(title_words)
+        # Final Score Formula:
+        # We prioritize Reliability.
+        # Final Score = (Reliability * 0.7) + (GoogleRating * 2 * 0.3) -> both normalized to approx 0-10 scale
         
-        if len(common_words) > 0:
-            relevance_score = 1.2
-        else:
-            desc_words = set(book.get("description", "").lower().split())
-            if len(topic_words.intersection(desc_words)) > 0:
-                relevance_score = 0.8
-            else:
-                relevance_score = 0.1
-            
-        # 正規化 HN 分數
-        norm_hn = min(hn_score, 500) / 100  # 範圍約 0~5
+        final_score = (r_score * 0.7) + (g_rating * 2 * 0.3)
         
-        # 混合評分 (Google 評分權重 0.3, HN 權重 0.7)
-        final_score = (norm_hn * 0.7) + (g_rating * 0.3)
-        final_score *= relevance_score
+        book_data = {
+            **book,
+            "reliability_score": r_score,
+            "reliability_reason": reliability["reason"],
+            "final_score": final_score
+        }
         
-        # 只要有任何信號 (Google 評分 > 0 或 HN 分數 > 0) 就保留，或者如果都為 0 但通過了過濾器，也暫時保留
-        if final_score > 0 or g_rating >= 0:
-            book_data = {
-                **book,
-                "hn_score": hn_score,
-                "final_score": final_score,
-                "hn_comments_count": hn_data["comments_count"]
-            }
+        # Filter threshold: Reliability must be > 6.0
+        if r_score >= 6.0:
             vetted.append(book_data)
-    
-    # 根據初步評分排序
-    vetted.sort(key=lambda x: x["final_score"], reverse=True)
 
-    # --- Deep Dive: Sentiment Analysis for Top Candidates ---
-    # 取前 5 名進行深度分析
-    top_candidates = vetted[:5]
-    print(f"--- 對前 {len(top_candidates)} 名候選書籍進行深度情感分析 ---")
-
-    for book in top_candidates:
-        # 獲取具體評論內容
-        comments_text = get_hn_comments(book["title"])
-
-        sentiment_data = {"score": 0.0, "summary": "No specific comments analyzed."}
-        if comments_text:
-             sentiment_data = analyze_sentiment(comments_text)
-
-        book["sentiment_score"] = sentiment_data["score"]
-        book["sentiment_summary"] = sentiment_data["summary"]
-
-        # 根據情感分數調整最終得分
-        # 如果情感分數是正的 (e.g., 0.8)，增加分數。如果是負的 (-0.5)，扣分。
-        # 假設最大加權為 50%
-        adjustment_factor = 1 + (book["sentiment_score"] * 0.5)
-
-        old_score = book["final_score"]
-        book["final_score"] = old_score * adjustment_factor
-
-        print(f"  -> Book: {book['title']}")
-        print(f"     Sentiment: {sentiment_data['score']} ({sentiment_data['summary']})")
-        print(f"     Score Adjusted: {old_score:.2f} -> {book['final_score']:.2f}")
-
-    # 重新排序
+    # Sort
     vetted.sort(key=lambda x: x["final_score"], reverse=True)
     
     best_book = vetted[0] if vetted else None
     
     if best_book:
-        print(f"--- 最終選書: 《{best_book['title']}》 (Final Score: {best_book['final_score']:.1f}) ---")
-    
+        print(f"--- 最終選書: 《{best_book['title']}》 (Score: {best_book['final_score']:.1f}) ---")
+
     return {"vetted_books": vetted, "selected_book": best_book}
 
 # --- 4. 構建圖 ---
@@ -273,7 +203,7 @@ if __name__ == "__main__":
         print(f"Title: {book['title']}")
         print(f"Author: {book['authors']}")
         print(f"Description: {book['description'][:100]}...")
-        print(f"Hacker News Score: {book['hn_score']}")
-        print(f"Sentiment: {book.get('sentiment_summary')}")
+        print(f"Reliability Score: {book['reliability_score']}")
+        print(f"Reason: {book.get('reliability_reason')}")
     else:
         print("未找到合適的書籍。")
