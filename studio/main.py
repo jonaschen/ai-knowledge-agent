@@ -1,4 +1,9 @@
 import sys
+import os
+
+# Add src to sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
+
 # 導入我們寫好的模組
 from curator import app as curator_app
 from content_fetcher import search_author_interview, get_transcript_text
