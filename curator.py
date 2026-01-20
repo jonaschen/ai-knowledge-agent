@@ -72,17 +72,30 @@ def verify_source_reliability(book: dict) -> dict:
     使用 LLM 驗證書籍的可靠性 (Reliability Verification)
     替代原本的 Hacker News Score
     """
-    print(f"--- Verifying Reliability: {book['title']} ---")
+    print(f"--- Verifying Reliability: {book.get('title', 'Unknown Title')} ---")
 
-    prompt = f"""
+    try:
+        # Handle empty description to prevent "Empty External Insights" 400 error
+        description = book.get('description', "")
+        if not description or not description.strip():
+            description = "No description available. Please judge based on Title, Author, and Publisher."
+
+        # Format authors nicely
+        authors = book.get('authors', [])
+        if isinstance(authors, list):
+            authors_str = ", ".join(authors)
+        else:
+            authors_str = str(authors)
+
+        prompt = f"""
     You are a strictly critical librarian and technical book curator.
     Evaluate the reliability and credibility of the following book for a professional audience.
 
-    Title: {book['title']}
-    Author: {book['authors']}
-    Publisher: {book['publisher']}
-    Date: {book['publishedDate']}
-    Description: {book['description']}
+    Title: {book.get('title', 'Unknown Title')}
+    Author: {authors_str}
+    Publisher: {book.get('publisher', 'Unknown Publisher')}
+    Date: {book.get('publishedDate', 'Unknown Date')}
+    Description: {description}
 
     Criteria:
     1. **Author Authority**: Is the author a known expert or practitioner in the field?
@@ -99,7 +112,6 @@ def verify_source_reliability(book: dict) -> dict:
     }}
     """
 
-    try:
         response = llm.invoke([
             SystemMessage(content=prompt)
         ])
