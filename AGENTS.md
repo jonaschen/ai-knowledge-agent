@@ -14,6 +14,6 @@ Focus on ACCURACY, CONTEXT, and EXTERNAL VALIDATION.
    - Conclusion: Who should read this?
 
 ## Agent Roles
-- **Curator**: Fetches the book AND specifically searches for "high quality reviews" and "Hacker News discussions". Packs them into `context_bundle`.
-- **Analyst**: Synthesizes the book summary with the external reviews. Creates a script that explicitly cites sources (e.g., "Reviewers on Hacker News noted that...").
+- **Curator**: Fetches the book AND performs "Reliability Verification" (checking author authority and publisher reputation) to ensure quality. Packs them into `context_bundle`.
+- **Analyst**: Synthesizes the book summary with the verification details. Creates a script that explicitly cites sources (e.g., "The author is a known expert in...").
 - **Broadcaster**: Renders the script into professional audio. Uses clear, paced delivery (SSML).
