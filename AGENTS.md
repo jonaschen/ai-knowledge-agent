@@ -1,22 +1,19 @@
-# AGENTS.md - Context & Directives for Google Jules
+# AGENTS.md - Deep Context Reader
 
 ## Project Goal
-Build an automated "High-Intensity Business Thinking Learning System" using LangGraph.
-Target audience: Senior Engineers transitioning to Entrepreneurship.
+Create a high-quality "Deep Dive" podcast about technical and business books.
+Focus on ACCURACY, CONTEXT, and EXTERNAL VALIDATION.
 
-## Architecture Stack
-- **Orchestration**: LangGraph (StateGraph)
-- **LLM**: Google Vertex AI (Gemini 2.5 Pro / Flash)
-- **TTS**: Google Cloud TTS (Chirp 3)
-- **Language**: Python 3.11+ (Type Hints required)
+## The Core Vibe
+1. **No Hallucinations**: Never invent content. If it's not in the source text or search results, don't say it.
+2. **Context is King**: Always discuss the book *in context*. What do critics say? What is the controversy?
+3. **Structured Deep Dive**:
+   - Intro: Why this book matters now.
+   - Core Idea 1 + External evidence/opinion.
+   - Core Idea 2 + External evidence/opinion.
+   - Conclusion: Who should read this?
 
-## Critical Constraints (The "Vibe")
-1. **Isomorphic Mapping**: When analyzing business books, ALWAYS map concepts to Distributed Systems metaphors (e.g., Marketing -> Traffic Shaping).
-2. **State Management**: Use `TypedDict` for graph state. Never assume global variables.
-3. **Environment**: NEVER hardcode Project IDs (like "project-391688be..."). Always use `os.getenv`.
-4. **Async**: All I/O (Network, API) must be asynchronous.
-
-## Directory Structure
-- `analyst_core.py`: The brain (LangGraph node logic).
-- `broadcaster.py`: TTS and Script generation.
-- `curator.py`: Book searching and HN filtering.
+## Agent Roles
+- **Curator**: Fetches the book AND specifically searches for "high quality reviews" and "Hacker News discussions". Packs them into `context_bundle`.
+- **Analyst**: Synthesizes the book summary with the external reviews. Creates a script that explicitly cites sources (e.g., "Reviewers on Hacker News noted that...").
+- **Broadcaster**: Renders the script into professional audio. Uses clear, paced delivery (SSML).
