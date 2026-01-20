@@ -5,7 +5,7 @@ from typing import TypedDict, Literal
 
 # Mock needed modules before importing analyst_core
 with patch('langchain_google_vertexai.ChatVertexAI') as MockChatVertexAI:
-    import analyst_core
+    from src.product import analyst_core
 
 class TestReflexionLoop(unittest.TestCase):
     def setUp(self):
