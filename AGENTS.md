@@ -1,19 +1,20 @@
-# AGENTS.md - Deep Context Reader
+# AI Software Studio Constitution (v2.0)
 
-## Project Goal
-Create a high-quality "Deep Dive" podcast about technical and business books.
-Focus on ACCURACY, CONTEXT, and EXTERNAL VALIDATION.
+## 1. Core Philosophy: Evidentialism over Metaphor
+- **Strictly Forbidden**: "Isomorphic Mapping" (forcing engineering metaphors onto non-engineering topics).
+- **Mandatory**: All claims must be backed by retrieved context or verified external sources.
+- **Structure**: Use "Recursive Thematic Tree" for analysis (Root Topic -> Core Arguments -> Evidence).
 
-## The Core Vibe
-1. **No Hallucinations**: Never invent content. If it's not in the source text or search results, don't say it.
-2. **Context is King**: Always discuss the book *in context*. What do critics say? What is the controversy?
-3. **Structured Deep Dive**:
-   - Intro: Why this book matters now.
-   - Core Idea 1 + External evidence/opinion.
-   - Core Idea 2 + External evidence/opinion.
-   - Conclusion: Who should read this?
+## 2. The TDD Mandate (Non-Negotiable)
+- **Red-Green-Refactor**: No production code is written without a failing test first.
+- **Test Types**:
+    - `Curator`: Input robustness tests (Empty inputs, Malformed JSON).
+    - `Researcher`: Source credibility tests (Allowlist domains).
+    - `Verifier`: URL validity check (HTTP 200) and Fact verification.
 
-## Agent Roles
-- **Curator**: Fetches the book AND performs "Reliability Verification" (checking author authority and publisher reputation) to ensure quality. Packs them into `context_bundle`.
-- **Analyst**: Synthesizes the book summary with the verification details. Creates a script that explicitly cites sources (e.g., "The author is a known expert in...").
-- **Broadcaster**: Renders the script into professional audio. Uses clear, paced delivery (SSML).
+## 3. Agent Responsibilities
+- **Curator**: Selects books based on quality metrics, handles API failures gracefully.
+- **Researcher**: Fetches *external* validation (reviews, papers) to support book claims.
+- **Analyst**: Synthesizes book content + research into structured scripts. NO creative fiction.
+- **Verifier**: Final gatekeeper. Rejects any content with dead links or unverified claims.
+- **ReviewAgent**: Automated CI pipeline manager. Merges PRs only when all tests pass.
