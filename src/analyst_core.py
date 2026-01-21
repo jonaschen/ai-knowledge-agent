@@ -48,44 +48,21 @@ ROUTER_PROMPT = """
 只回傳一個單字: "instructional" 或 "narrative"。
 """
 
-# 策略 A: 針對工具書 (原本的邏輯)
-INSTRUCTIONAL_PROMPT = """
-你是一位資深架構師。輸入是一本「方法論指南」。
-請將其**直接映射**為分佈式系統術語。
-例如：
-- "跑步訓練計畫" -> "系統壓力測試計畫 (Load Testing Schedule)"
-- "休息日" -> "維護窗口 (Maintenance Window)"
-- "心率區間" -> "資源利用率閾值 (Resource Utilization Thresholds)"
-
-輸出格式：技術架構文檔 (Design Doc)。
-"""
-
-# 策略 B: 針對敘事/歷史書 (新增的邏輯 - 解決地獄梗問題)
-NARRATIVE_PROMPT = """
-你是一位資深架構師。輸入是一段「歷史敘事」或「傳記」。
-**警告：不要將故事中的悲劇或災難直接映射為技術攻擊。這很不恰當。**
-
-你的任務是進行 **Root Cause Analysis (RCA)**：
-1. **抽象化**：從故事中提取「決策模式」、「組織失誤」或「危機處理原則」。
-2. **架構化**：將這些「原則」應用於軟體工程。
-
-例如：
-- 如果故事是關於「馬拉松爆炸案後的混亂」-> 轉譯為「缺乏災難復原 (DR) 計劃與事件響應 (Incident Response) 流程的缺失」。
-- 如果故事是關於「耐吉創辦人的資金斷裂」-> 轉譯為「系統資源枯竭 (Resource Exhaustion) 與流控失敗」。
-
-輸出格式：事後檢討報告 (Post-Mortem Analysis) 或 系統韌性架構建議書。
-"""
+# --- Thematic Tree Prompts ---
+THESIS_PROMPT = "Based on the following text, what is the single central thesis of the book? Concicsely state the thesis in one sentence."
+CORE_IDEAS_PROMPT = "Given the central thesis: '{thesis}', what are the 2-3 main supporting arguments or 'Core Ideas' presented in the text? List them clearly."
+SUPPORTING_EVIDENCE_PROMPT = "Find specific examples, data, or anecdotes from the text that support the idea that: '{core_idea}'. Quote or paraphrase the evidence directly from the text."
 
 CRITIC_PROMPT = """
-你是 Linus Torvalds 風格的審查員。
-審查這份將商業/歷史內容轉化為工程系統的文檔。
-確保：
-1. 隱喻準確且不過度解讀。
-2. **特別檢查**：如果原文是歷史災難，轉譯後的文檔是否保持了專業性，沒有將受害者變成數據包？
-3. 是否去除了廢話？
+You are a meticulous editor reviewing a podcast script. The script should follow a clear thematic tree structure: Central Thesis -> Core Ideas -> Supporting Evidence.
+Ensure the following:
+1.  **Structural Integrity**: Does the script contain a 'Central Thesis', at least one 'Core Idea', and 'Supporting Evidence' for each idea?
+2.  **Clarity and Conciseness**: Is the thesis clear? Are the core ideas distinct? Is the evidence relevant?
+3.  **Accuracy**: Does the evidence accurately reflect the provided text?
 
-如果通過，回覆 "LGTM"。否則列出修改建議。
+If the script is well-structured and accurate, respond with "LGTM". Otherwise, provide specific, actionable feedback for revision.
 """
+
 
 # --- 4. 節點函數 ---
 
@@ -112,23 +89,41 @@ def router_node(state: AnalysisState):
 
 def draft_node(state: AnalysisState):
     """
-    Draft Node: Generates the initial analysis based on the selected strategy.
+    Draft Node: Generates the initial thematic tree analysis.
     """
-    book_type = state["book_type"]
-    print(f"--- [Phase 1] 生成初稿 (Strategy: {book_type}) ---")
+    print("--- [Phase 1] Generating Thematic Tree Draft ---")
+    original_text = state['original_text']
     
-    # 根據類型選擇 Prompt
-    if book_type == "narrative":
-        sys_msg = NARRATIVE_PROMPT
-    else:
-        sys_msg = INSTRUCTIONAL_PROMPT
-        
-    response = llm.invoke([
-        SystemMessage(content=sys_msg),
-        HumanMessage(content=f"原始文本：\n{state['original_text']}")
+    # 1. Identify Thesis
+    thesis_response = llm.invoke([
+        SystemMessage(content=THESIS_PROMPT),
+        HumanMessage(content=original_text)
     ])
+    thesis = thesis_response.content.strip()
     
-    return {"draft_analysis": response.content, "revision_count": 1}
+    # 2. Extract Core Ideas
+    core_ideas_response = llm.invoke([
+        SystemMessage(content=CORE_IDEAS_PROMPT.format(thesis=thesis)),
+        HumanMessage(content=original_text)
+    ])
+    core_ideas_text = core_ideas_response.content.strip()
+    # Simple parsing of core ideas. Assumes they are numbered or bulleted.
+    core_ideas = [line.strip() for line in core_ideas_text.split('\n') if line.strip()]
+
+    # 3. Gather Supporting Evidence for each Core Idea
+    script_parts = [f"Central Thesis: {thesis}"]
+    for i, idea in enumerate(core_ideas, 1):
+        evidence_response = llm.invoke([
+            SystemMessage(content=SUPPORTING_EVIDENCE_PROMPT.format(core_idea=idea)),
+            HumanMessage(content=original_text)
+        ])
+        evidence = evidence_response.content.strip()
+        script_parts.append(f"\nCore Idea {i}: {idea.lstrip('*- ')}")
+        script_parts.append(f"Supporting Evidence: {evidence}")
+
+    final_script = "\n".join(script_parts)
+
+    return {"draft_analysis": final_script, "revision_count": 1}
 
 def critique_node(state: AnalysisState):
     """
@@ -145,23 +140,33 @@ def critique_node(state: AnalysisState):
 def revise_node(state: AnalysisState):
     """
     Revise Node: Rewrites the analysis based on the critique feedback.
-    Increments the revision count.
     """
-    print("--- [Phase 3] 重構中 (Refactoring) ---")
-    # 這裡也要根據類型選擇 Prompt 來保持一致性
-    book_type = state["book_type"]
-    sys_msg = NARRATIVE_PROMPT if book_type == "narrative" else INSTRUCTIONAL_PROMPT
+    print("--- [Phase 3] Refactoring Based on Feedback ---")
     
     prompt = f"""
-    請根據 Review 意見重寫分析。
-    Review 意見：{state['critique_feedback']}
-    原草稿：{state['draft_analysis']}
-    原始文本：{state['original_text']}
+    The previous draft has been critiqued. Please revise it based on the following feedback.
+
+    **Critique Feedback:**
+    {state['critique_feedback']}
+
+    **Original Draft:**
+    {state['draft_analysis']}
+
+    **Original Text:**
+    {state['original_text']}
+
+    Rewrite the script to address the feedback while maintaining the 'Thesis -> Core Idea -> Evidence' structure.
     """
+
+    # The system message should guide the LLM to act as a scriptwriter/editor
+    # For simplicity, we can reuse the core idea of being an analyst, but a more specific prompt could be used.
+    # We will use a generic "you are a helpful assistant" here.
+
     response = llm.invoke([
-        SystemMessage(content=sys_msg),
+        SystemMessage(content="You are an expert script editor. Revise the provided draft to address the user's critique."),
         HumanMessage(content=prompt)
     ])
+
     return {"draft_analysis": response.content, "revision_count": state.get("revision_count", 1) + 1}
 
 # --- 5. 圖構建 ---
