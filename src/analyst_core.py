@@ -49,7 +49,23 @@ ROUTER_PROMPT = """
 """
 
 # --- Thematic Tree Prompts ---
-THESIS_PROMPT = "Based on the following text, what is the single central thesis of the book? Concicsely state the thesis in one sentence."
+THESIS_PROMPT = """
+Based on the following text, what is the single central thesis of the book? Concicsely state the thesis in one sentence.
+
+**Core Mandate: Evidentialism**
+- All claims you make MUST be backed by retrieved context or verified external sources.
+- You MUST provide a citation for every piece of evidence. Example: [Source Name, Section/Page]
+- Strictly forbidden: Do not invent, infer, or use metaphorical analysis. Your job is synthesis, not creation.
+
+**Output Structure: Recursive Thematic Tree**
+You MUST format your entire output according to the following structure:
+- **Root Topic**: [The main subject of the analysis]
+  - **Core Argument 1**: [A primary argument or theme]
+    - **Evidence A**: [A direct quote or data point supporting Argument 1] [Citation A]
+    - **Evidence B**: [Another direct quote or data point supporting Argument 1] [Citation B]
+  - **Core Argument 2**: [A secondary argument or theme]
+    - **Evidence C**: [A direct quote or data point supporting Argument 2] [Citation C]
+"""
 CORE_IDEAS_PROMPT = "Given the central thesis: '{thesis}', what are the 2-3 main supporting arguments or 'Core Ideas' presented in the text? List them clearly."
 SUPPORTING_EVIDENCE_PROMPT = "Find specific examples, data, or anecdotes from the text that support the idea that: '{core_idea}'. Quote or paraphrase the evidence directly from the text."
 
