@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import re
 from typing import TypedDict, List, Optional
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
@@ -117,18 +118,19 @@ def verify_source_reliability(book: dict) -> dict:
         ])
         content = response.content.strip()
 
-        # Robust JSON extraction
+        # Robust JSON extraction with regex
         try:
-            # Find the first '{' and the last '}'
-            start_index = content.find('{')
-            end_index = content.rfind('}')
+            # Regex to find a JSON object within a larger string
+            match = re.search(r'\{.*\}', content, re.DOTALL)
 
-            if start_index != -1 and end_index != -1:
-                json_str = content[start_index : end_index + 1]
-                result = json.loads(json_str)
+            if match:
+                json_string = match.group(0)
             else:
-                # Fallback: try to load the whole content if no braces found (unlikely for valid JSON)
-                result = json.loads(content)
+                # Fallback to the original string if no JSON object is found
+                json_string = content
+
+            result = json.loads(json_string)
+
         except json.JSONDecodeError:
             print(f"JSON Parsing Failed. Content: {content[:100]}...")
             return {"score": 5.0, "reason": "JSON parsing failed, using default score."}

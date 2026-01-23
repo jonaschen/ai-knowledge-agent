@@ -15,6 +15,8 @@ class TestCurator(unittest.TestCase):
         # Reset the mock llm for each test
         self.mock_llm = curator.llm
         self.mock_llm.invoke.reset_mock()
+        # Explicitly clear side_effect to prevent test leakage
+        self.mock_llm.invoke.side_effect = None
 
     def test_verify_reliability_empty_description(self):
         """
@@ -66,6 +68,44 @@ class TestCurator(unittest.TestCase):
 
         self.assertEqual(result["score"], 5.0)
         self.assertIn("Verification failed", result["reason"])
+
+    def test_verify_reliability_handles_markdown_wrapped_json(self):
+        """
+        Ensures verify_source_reliability can parse JSON even when it's wrapped
+        in a Markdown code block, which is a known LLM failure mode.
+        """
+        # Arrange
+        book = {
+            "title": "Test Book",
+            "authors": ["Author"],
+            "publisher": "Publisher",
+            "publishedDate": "2023",
+            "description": "Some description"
+        }
+
+        # This string simulates the LLM's faulty output
+        markdown_wrapped_json_string = """
+        ```json
+        {
+            "score": 9.5,
+            "reason": "The author is a recognized expert in the field."
+        }
+        ```
+        """
+
+        expected_dict = {
+            "score": 9.5,
+            "reason": "The author is a recognized expert in the field."
+        }
+
+        self.mock_llm.invoke.return_value = MagicMock(content=markdown_wrapped_json_string)
+
+        # Act
+        result = curator.verify_source_reliability(book)
+
+        # Assert
+        self.assertEqual(result, expected_dict, "The method failed to strip Markdown and parse the JSON correctly.")
+
 
 if __name__ == '__main__':
     unittest.main()
