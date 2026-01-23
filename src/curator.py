@@ -5,7 +5,7 @@ from typing import TypedDict, List, Optional
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from langchain_google_vertexai import ChatVertexAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
 load_dotenv()
 
@@ -113,7 +113,7 @@ def verify_source_reliability(book: dict) -> dict:
     """
 
         response = llm.invoke([
-            SystemMessage(content=prompt)
+            HumanMessage(content=prompt)
         ])
         content = response.content.strip()
 
