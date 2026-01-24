@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,7 +20,7 @@ class ProductManager:
             "Generate a JSON execution plan for the following requirement: {requirement}"
         )
         self.parser = JsonOutputParser()
-        self.chain = self.prompt | self.llm | self.parser
+        self.chain = self.prompt | self.llm | StrOutputParser() | self.parser
 
     def generate_plan(self, requirement: str) -> dict:
         """
