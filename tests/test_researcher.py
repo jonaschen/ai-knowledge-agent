@@ -53,5 +53,32 @@ class TestResearcher(unittest.TestCase):
         expected_query = f'reviews of the book "{book_title}"'
         mock_search.assert_called_once_with(query=expected_query)
 
+    @patch('product.researcher.TavilyClient')
+    def test_search_filters_low_quality_book_sources(self, MockTavilyClient):
+        """
+        Tests that the search method filters out low-quality sources like social media.
+        """
+        # Arrange
+        mock_api_key = "test_key"
+        mock_tavily_instance = MockTavilyClient.return_value
+        mock_tavily_instance.search.return_value = {
+            "results": [
+                {"title": "Good Source", "url": "https://www.goodreads.com/book/show/123", "content": "A review."},
+                {"title": "Bad Source", "url": "https://twitter.com/some_user/status/123", "content": "A tweet."},
+                {"title": "Another Good Source", "url": "https://en.wikipedia.org/wiki/A_Book", "content": "An article."}
+            ]
+        }
+        researcher = Researcher(tavily_api_key=mock_api_key)
+
+        # Act
+        results = researcher.search(query="some book")
+
+        # Assert
+        # This assertion is expected to fail until the filtering logic is implemented in Researcher.search()
+        expected_urls = ["https://www.goodreads.com/book/show/123", "https://en.wikipedia.org/wiki/A_Book"]
+        actual_urls = [result['url'] for result in results]
+
+        self.assertCountEqual(actual_urls, expected_urls, "The search results should not contain low-quality sources.")
+
 if __name__ == '__main__':
     unittest.main()

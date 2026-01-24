@@ -30,8 +30,10 @@ class Researcher:
         """
         try:
             response = self.client.search(query=query, search_depth="basic", max_results=max_results)
-            # We only care about the 'results' key for our structured output.
-            return response.get('results', [])
+            results = response.get('results', [])
+            # Filter out low-quality sources (e.g., social media)
+            filtered_results = [result for result in results if "twitter.com" not in result.get('url', '')]
+            return filtered_results
         except Exception as e:
             # In a real-world scenario, we'd have more robust logging.
             print(f"An error occurred during search: {e}")
