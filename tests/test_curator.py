@@ -9,6 +9,7 @@ os.environ["LOCATION"] = "us-central1"
 # Mock ChatVertexAI before importing curator
 with patch('langchain_google_vertexai.ChatVertexAI') as MockChatVertexAI:
     from src import curator
+from langchain_core.messages import HumanMessage
 
 class TestCurator(unittest.TestCase):
     def setUp(self):
@@ -17,6 +18,33 @@ class TestCurator(unittest.TestCase):
         self.mock_llm.invoke.reset_mock()
         # Explicitly clear side_effect to prevent test leakage
         self.mock_llm.invoke.side_effect = None
+
+    def test_prompt_construction_uses_human_message(self):
+        """
+        Tests that the prompt constructor uses HumanMessage instead of SystemMessage.
+        This is a requirement for compatibility with certain models.
+        """
+        # GIVEN a topic for the prompt
+        book = {
+            "title": "Quantum Computing",
+            "authors": ["Author"],
+            "publisher": "Publisher",
+            "publishedDate": "2023",
+            "description": "A book about quantum computing."
+        }
+        self.mock_llm.invoke.return_value = MagicMock(content='{"score": 8.0, "reason": "Good"}')
+
+        # WHEN the prompt is constructed by calling the function
+        curator.verify_source_reliability(book)
+
+        # THEN the first message in the prompt must be an instance of HumanMessage
+        self.assertTrue(self.mock_llm.invoke.called)
+        args, _ = self.mock_llm.invoke.call_args
+        prompt_messages = args[0]
+
+        assert len(prompt_messages) > 0, "Prompt should have at least one message."
+        assert isinstance(prompt_messages[0], HumanMessage), \
+            f"Expected first message to be HumanMessage, but got {type(prompt_messages[0])}."
 
     def test_verify_reliability_empty_description(self):
         """
