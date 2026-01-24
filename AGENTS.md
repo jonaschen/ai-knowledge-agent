@@ -1,4 +1,4 @@
-# AI Software Studio Constitution (v2.1)
+# AI Software Studio Constitution (v2.2)
 
 ## 1. Core Philosophy: Evidentialism & Automation
 
@@ -25,7 +25,9 @@ All agents MUST respect this structure. **DO NOT** delete files listed here unle
 ├── studio/                 <-- [Management Layer] Tools that build the product
 │   ├── architect.py        # [Tech Lead] Translates goals into TDD Issues
 │   ├── review_agent.py     # [QA/Ops] Automated PR testing & merging
-│   └── pm.py               # [Product Owner] Requirement breakdown & Planning
+│   ├── pm.py               # [Product Owner] Requirement breakdown & Planning
+│   ├── review_history.md   # [Active Memory] Recent failures & lessons (Max 500 lines)
+│   └── rules.md            # [Long-term Memory] Design Patterns & Best Practices
 │
 ├── tests/                  <-- [Quality Gate]
 │   ├── test_curator.py
@@ -62,6 +64,40 @@ All agents MUST respect this structure. **DO NOT** delete files listed here unle
 * **Testing:** All PRs must include a test file in `tests/`.
 
 ---
+<<<<<<< Updated upstream
+=======
+
+## 5. Knowledge Management & Continuous Learning (The Memory)
+
+To prevent repetitive mistakes and "Agentic Loops", all agents must adhere to the following memory protocols:
+
+### Structured Logging (Mandatory)
+
+All entries in `studio/review_history.md` MUST follow this format to ensure machine readability:
+
+## [PR #<ID>] <Component> Failure
+- **Date**: YYYY-MM-DD
+- **Error Type**: <e.g., PydanticValidationError, APITimeout>
+- **Root Cause**: <Brief description>
+- **Fix Pattern**: <Actionable instruction for future>
+- **Tags**: #mocking, #pydantic, #api
+
+
+### Context Window Management (Archival Protocol)
+
+* **Trigger:** When `studio/review_history.md` exceeds **500 lines**.
+* **Action (Architect):**
+1. **Summarize:** Extract universal "Fix Patterns" and add them to `studio/rules.md`.
+2. **Archive:** Move the detailed logs to `studio/archive/review_history_YYYY_MM.md`.
+3. **Reset:** Clear `studio/review_history.md` to keep it lightweight.
+
+
+
+### Failure is Knowledge
+
+* If a PR is closed or code is reverted, the lesson learned must be preserved in `review_history.md`.
+* **Jules (Developer):** Before writing any code, you **MUST** read `studio/rules.md` (for best practices) and `studio/review_history.md` (for recent pitfalls).
+>>>>>>> Stashed changes
 
 ## 5. Knowledge Management & Continuous Learning (The Memory)
 
