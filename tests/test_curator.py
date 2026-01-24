@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 import os
+import requests
 
 # Set environment variables to avoid defaults that might cause issues (though defaults seem harmless for instantiation)
 os.environ["PROJECT_ID"] = "test-project"
@@ -133,6 +134,44 @@ class TestCurator(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, expected_dict, "The method failed to strip Markdown and parse the JSON correctly.")
+
+    def test_search_google_books_fallback_uses_researcher_agent(self):
+        """
+        Verify that if the primary API fails, the Curator uses the
+        Researcher agent as a fallback.
+        """
+        query = "Principles of Neural Science"
+
+        # Mock the Researcher to control its output and monitor its usage
+        mock_researcher_instance = MagicMock()
+        mock_researcher_instance.search.return_value = [
+            {
+                "title": "Principles of Neural Science, Fifth Edition",
+                "url": "http://example.com/neural-science",
+                "content": "A book by Kandel."
+            }
+        ]
+
+        # Patch the primary API to simulate a failure
+        # AND patch the Researcher to inject our mock
+        with patch('requests.get', side_effect=requests.exceptions.RequestException("API Unavailable")) as mock_requests_get, \
+             patch('src.curator.Researcher', return_value=mock_researcher_instance) as mock_researcher_class:
+
+            curator_instance = curator
+            books = curator_instance.search_google_books(query)
+
+            # 1. Verify the primary API was called and failed
+            mock_requests_get.assert_called_once()
+
+            # 2. Verify the Researcher was initialized and its search method was called
+            mock_researcher_class.assert_called_once()
+            mock_researcher_instance.search.assert_called_once_with(query=query)
+
+            # 3. Verify the Curator correctly maps the Researcher's output
+            assert len(books) == 1
+            assert books[0]['title'] == "Principles of Neural Science, Fifth Edition"
+            assert books[0]['url'] == "http://example.com/neural-science"
+            assert books[0]['source'] == "Researcher Fallback" # Verify the source is correctly attributed
 
 
 if __name__ == '__main__':
