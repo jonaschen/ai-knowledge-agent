@@ -53,5 +53,50 @@ class TestResearcher(unittest.TestCase):
         expected_query = f'reviews of the book "{book_title}"'
         mock_search.assert_called_once_with(query=expected_query)
 
+def test_search_filters_low_quality_book_sources():
+    """
+    Given a book-related query is flagged,
+    When the search is performed,
+    Then the query should be enhanced and low-quality sources should be filtered out.
+    """
+    # Arrange
+    mock_tavily_results = {
+        "results": [
+            {"url": "https://www.nybooks.com/articles/2022/03/24/the-enigma-of-ai-consciousness/", "content": "Authoritative review..."},
+            {"url": "https://www.reddit.com/r/books/comments/12345/any_good_books_on_deep_learning/", "content": "Reddit discussion..."},
+            {"url": "https://www.goodreads.com/list/show/123.Best_AI_Books", "content": "A list of books..."},
+            {"url": "https://www.theguardian.com/books/2023/jun/01/a-review-of-deep-learning-foundations", "content": "A deep dive..."},
+            {"url": "https://www.buzzfeed.com/top-5-ai-books-you-must-read", "content": "A low-content listicle..."},
+        ]
+    }
+
+    expected_urls = [
+        "https://www.nybooks.com/articles/2022/03/24/the-enigma-of-ai-consciousness/",
+        "https://www.theguardian.com/books/2023/jun/01/a-review-of-deep-learning-foundations",
+    ]
+
+    # Mock the Tavily client's search method
+    with patch('product.researcher.TavilyClient') as mock_tavily:
+        mock_instance = MagicMock()
+        mock_instance.search.return_value = mock_tavily_results
+        mock_tavily.return_value = mock_instance
+
+        # Act
+        researcher = Researcher()
+        # Add a flag to indicate this is a book search for the Curator fallback
+        actual_results = researcher.search(topic="deep learning", is_book_search=True)
+
+        # Assert
+        # 1. Assert the search query was enhanced for finding books
+        mock_instance.search.assert_called_once_with(
+            query="best authoritative books on deep learning in-depth review",
+            max_results=5
+        )
+
+        # 2. Assert the low-quality results are filtered
+        actual_urls = [res['url'] for res in actual_results]
+        assert len(actual_urls) == len(expected_urls), "The number of filtered results is incorrect."
+        assert sorted(actual_urls) == sorted(expected_urls), "The filtered URLs do not match the expected URLs."
+
 if __name__ == '__main__':
     unittest.main()
