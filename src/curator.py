@@ -24,29 +24,42 @@ llm = ChatVertexAI(
     max_output_tokens=1024
 )
 
-# --- 1. 定義狀態 ---
-class CuratorState(TypedDict):
-    topic: str                  # 用戶想學的主題 (e.g., "B2B Sales")
-    raw_candidates: List[dict]  # Google Books 找到的書
-    vetted_books: List[dict]    # 經過 Reliability 驗證的書
-    selected_book: dict         # 最終選定的一本書
+class Curator:
+    def __init__(self):
+        self.tavily_api_key = os.getenv("TAVILY_API_KEY")
 
-# --- 2. 工具函數 (API Clients) ---
+    def _adapt_tavily_results(self, results: dict) -> list:
+        """Adapts Tavily search results to our standard book format."""
+        adapted_books = []
+        if "results" in results:
+            for item in results["results"]:
+                adapted_books.append({
+                    "title": item.get("title"),
+                    "authors": ["N/A"],
+                    "description": item.get("content"),
+                })
+        return adapted_books
 
-def search_google_books(query: str, max_results=20):
-    """從 Google Books 獲取候選書籍"""
-    print(f"--- 正在搜索 Google Books: {query} ---")
-    url = "https://www.googleapis.com/books/v1/volumes"
-    params = {
-        "q": query,
-        "langRestrict": "en", # 英文書通常技術含量較高
-        "orderBy": "relevance",
-        "maxResults": max_results
-    }
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    try:
+    def _fallback_to_tavily(self, query: str) -> list:
+        """Initializes Tavily client, performs search, and adapts results."""
+        client = TavilyClient(api_key=self.tavily_api_key)
+        tavily_results = client.search(query=f"best books on {query}", search_depth="basic")
+        return self._adapt_tavily_results(tavily_results)
+
+    def _search_google_books(self, query: str, max_results=20):
+        """從 Google Books 獲取候選書籍"""
+        print(f"--- 正在搜索 Google Books: {query} ---")
+        url = "https://www.googleapis.com/books/v1/volumes"
+        params = {
+            "q": query,
+            "langRestrict": "en", # 英文書通常技術含量較高
+            "orderBy": "relevance",
+            "maxResults": max_results
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+
         resp = requests.get(url, params=params, headers=headers)
         if resp.status_code != 200:
             logging.warning(f"Google Books API failed with status {resp.status_code}. Falling back to Researcher agent.")
@@ -180,7 +193,8 @@ def search_node(state: CuratorState):
         query = f"{topic} book" 
     
     print(f"--- 調整後的搜尋 Query: {query} ---")
-    candidates = search_google_books(query)
+    curator = Curator()
+    candidates = curator.search(query)
     return {"raw_candidates": candidates}
 
 def validation_node(state: CuratorState):

@@ -6,10 +6,12 @@ import requests
 # Set environment variables to avoid defaults that might cause issues (though defaults seem harmless for instantiation)
 os.environ["PROJECT_ID"] = "test-project"
 os.environ["LOCATION"] = "us-central1"
+os.environ["TAVILY_API_KEY"] = "TAVILY_API_KEY"
 
 # Mock ChatVertexAI before importing curator
 with patch('langchain_google_vertexai.ChatVertexAI') as MockChatVertexAI:
     from src import curator
+    from src.curator import Curator
 from langchain_core.messages import HumanMessage
 
 class TestCurator(unittest.TestCase):
