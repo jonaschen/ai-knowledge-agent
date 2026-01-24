@@ -21,10 +21,9 @@ class FailureAnalysis(BaseModel):
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class ReviewAgent:
-    def __init__(self, repo_name: str):
-        self.repo_path = os.getcwd()
-        self.github_client = Github(os.getenv('GITHUB_TOKEN'))
-        self.repo = self.github_client.get_repo(repo_name)
+    def __init__(self, repo_path: str, github_client):
+        self.repo_path = repo_path
+        self.github_client = github_client
         self.llm = ChatVertexAI(model_name="gemini-1.5-flash")
 
     def analyze_failure(self, test_output: str) -> FailureAnalysis:

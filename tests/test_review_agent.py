@@ -10,11 +10,12 @@ load_dotenv()
 @pytest.fixture
 def review_agent():
     # Mock the GitHub and VertexAI clients to avoid real API calls
-    with patch('studio.review_agent.Github'), \
-         patch('studio.review_agent.ChatVertexAI'):
+    with patch('studio.review_agent.Github') as MockGithub, \
+         patch('studio.review_agent.ChatVertexAI') as MockChatVertexAI:
         # Ensure GITHUB_TOKEN is set for the constructor
         assert os.getenv("GITHUB_TOKEN"), "GITHUB_TOKEN not found in .env"
         agent = ReviewAgent(repo_name="test/repo")
+        agent.llm = MockChatVertexAI.return_value
         return agent
 
 def test_analyze_failure_with_ai(review_agent):
