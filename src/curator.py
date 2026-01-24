@@ -1,9 +1,11 @@
+import logging
 import requests
 import json
 import os
 import re
 from typing import TypedDict, List, Optional
 from dotenv import load_dotenv
+from tavily import TavilyClient
 from langgraph.graph import StateGraph, END
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage
@@ -46,6 +48,10 @@ def search_google_books(query: str, max_results=20):
     }
     try:
         resp = requests.get(url, params=params, headers=headers)
+        if resp.status_code != 200:
+            logging.warning(f"Google Books API failed with status {resp.status_code}. Falling back to Tavily.")
+            return _fallback_to_tavily(query)
+
         data = resp.json()
 
         books = []
@@ -62,11 +68,29 @@ def search_google_books(query: str, max_results=20):
                     "ratingsCount": info.get("ratingsCount", 0)
                 })
         else:
-            print(f"Google Books API Response (No items): {data}")
+            logging.warning(f"Google Books API Response (No items): {data}")
         return books
-    except Exception as e:
-        print(f"Google Books API Error: {e}")
-        return []
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"Google Books API request failed: {e}. Falling back to Tavily.")
+        return _fallback_to_tavily(query)
+
+def _adapt_tavily_results(results: dict) -> list:
+    """Adapts Tavily search results to our standard book format."""
+    adapted_books = []
+    if "results" in results:
+        for item in results["results"]:
+            adapted_books.append({
+                "title": item.get("title"),
+                "authors": ["N/A"],
+                "description": item.get("content"),
+            })
+    return adapted_books
+
+def _fallback_to_tavily(query: str) -> list:
+    """Initializes Tavily client, performs search, and adapts results."""
+    client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+    tavily_results = client.search(query=f"best books on {query}", search_depth="basic")
+    return _adapt_tavily_results(tavily_results)
 
 def verify_source_reliability(book: dict) -> dict:
     """
