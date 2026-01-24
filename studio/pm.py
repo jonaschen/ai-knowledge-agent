@@ -1,35 +1,35 @@
-# studio/pm.py
-import json
 import os
+from dotenv import load_dotenv
+from langchain_google_vertexai import ChatVertexAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+
+# Load environment variables from .env file
+load_dotenv()
 
 class ProductManager:
     """
-    The ProductManager (PM) agent is responsible for high-level planning
-    and breaking down requirements into executable plans (e.g., JSON).
-    This aligns with AGENTS.md v2.1.
+    High-level planner. Generates execution plans in JSON format.
     """
-
     def __init__(self):
-        """Initializes the Product Manager."""
-        pass
+        """Initializes the ProductManager with the standardized LLM wrapper."""
+        self.llm = ChatVertexAI(model="gemini-2.5-pro", temperature=0.0)
+        # You may need to define a prompt and parser as well
+        # This is a sample structure
+        self.prompt = ChatPromptTemplate.from_template(
+            "Generate a JSON execution plan for the following requirement: {requirement}"
+        )
+        self.parser = JsonOutputParser()
+        self.chain = self.prompt | self.llm | self.parser
 
-    def generate_plan(self, requirements: str) -> str:
+    def generate_plan(self, requirement: str) -> dict:
         """
-        Generates a high-level execution plan from user requirements.
+        Generates a structured execution plan using the LangChain wrapper.
 
         Args:
-            requirements: A string describing the desired features or goals.
+            requirement: The user requirement string.
 
         Returns:
-            A JSON string representing the execution plan.
+            A dictionary representing the JSON execution plan.
         """
-        # Placeholder for future plan generation logic
-        plan = {
-            "objective": requirements,
-            "status": "pending_architect_review",
-            "steps": [
-                {"agent": "Architect", "task": "Translate plan into TDD issues."},
-                {"agent": "ReviewAgent", "task": "Monitor PRs for test completion and merge."},
-            ]
-        }
-        return json.dumps(plan, indent=2)
+        return self.chain.invoke({"requirement": requirement})
