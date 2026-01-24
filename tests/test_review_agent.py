@@ -1,81 +1,86 @@
-import unittest
-from unittest.mock import MagicMock, patch
-from studio.review_agent import ReviewAgent
+import pytest
+from unittest.mock import patch, MagicMock, mock_open
+from studio.review_agent import ReviewAgent, FailureAnalysis
+import os
+from dotenv import load_dotenv
 
-class TestReviewAgent(unittest.TestCase):
+# Ensure environment variables are loaded for the test context
+load_dotenv()
 
-    @patch('studio.review_agent.subprocess.run')
-    @patch('studio.review_agent.Github') # 雖然我們現在依賴注入 client，但有些測試可能還是需要 mock
-    def test_merge_pr_on_test_success(self, MockGithub, mock_subprocess_run):
-        """
-        GIVEN an open pull request
-        WHEN the tests pass (returncode 0)
-        THEN the agent should merge the PR.
-        """
-        # --- Arrange ---
-        # 1. 模擬 Pytest 成功
-        mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
-        
-        # 2. 模擬 GitHub Client 和 PR
-        mock_client = MagicMock()
-        mock_repo = MagicMock()
-        mock_pr = MagicMock()
-        
-        # 設定回傳鏈：client -> repo -> pulls -> pr
-        # 注意：我們現在是傳入 client，所以不需要 MockGithub class 來生成 client
-        mock_repo.get_pulls.return_value = [mock_pr]
-        
-        # 這裡不需要設定 get_repo，因為我們會在測試中直接注入依賴，
-        # 或者如果您的代碼是在 process_open_prs 裡面呼叫 get_repo，那就要設定
-        # 但根據最新代碼，agent 初始化後並沒有馬上 get_repo，而是由外部傳入 prs
-        # 為了保險起見，我們讓 process_open_prs 可以運作
-        
-        # --- Act ---
-        # 【修正點】使用新的建構函式：傳入 repo_path 和 github_client
-        agent = ReviewAgent(repo_path="/tmp/test_repo", github_client=mock_client)
-        
-        # 我們直接測試 process_open_prs 邏輯，傳入我們偽造的 PR 列表
-        # 因為新版邏輯是 process_open_prs(open_prs)
-        agent.process_open_prs([mock_pr])
-        
-        # --- Assert ---
-        # 驗證是否有呼叫 git checkout (代表有切換分支)
-        # 注意：因為 subprocess.run 被呼叫多次，我們檢查是否有一次包含 'checkout'
-        checkout_called = any('checkout' in call.args[0] for call in mock_subprocess_run.call_args_list)
-        self.assertTrue(checkout_called, "Should verify git checkout is called")
-        
-        # 驗證是否有執行 pytest
-        pytest_called = any('pytest' in str(call.args[0]) for call in mock_subprocess_run.call_args_list)
-        self.assertTrue(pytest_called, "Should verify pytest is called")
+@pytest.fixture
+def review_agent():
+    # Mock the GitHub and VertexAI clients to avoid real API calls
+    with patch('studio.review_agent.Github'), \
+         patch('studio.review_agent.ChatVertexAI'):
+        # Ensure GITHUB_TOKEN is set for the constructor
+        assert os.getenv("GITHUB_TOKEN"), "GITHUB_TOKEN not found in .env"
+        agent = ReviewAgent(repo_name="test/repo")
+        return agent
 
-        # 驗證 PR 是否被合併
-        mock_pr.merge.assert_called_once()
+def test_analyze_failure_with_ai(review_agent):
+    """
+    Test that analyze_failure correctly uses ChatVertexAI to process test output.
+    """
+    # 1. Arrange: Mock the AI model and its response
+    mock_llm = MagicMock()
+    # This is the structured data we expect the AI to return
+    expected_analysis = FailureAnalysis(
+        error_type="AssertionError",
+        root_cause="The 'process' method in 'analyst_core.py' returned an empty list instead of a populated one, indicating a failure in the data transformation logic.",
+        fix_suggestion="Verify the input data to 'process' and ensure the transformation logic correctly handles the provided fixture. Check for edge cases where the input might be valid but result in no output."
+    )
+    mock_llm.invoke.return_value = expected_analysis
+    review_agent.llm = mock_llm
 
-    @patch('studio.review_agent.subprocess.run')
-    def test_no_merge_on_test_failure(self, mock_subprocess_run):
-        """
-        GIVEN an open pull request
-        WHEN the tests fail (returncode 1)
-        THEN the agent should NOT merge the PR.
-        """
-        # --- Arrange ---
-        mock_subprocess_run.return_value = MagicMock(returncode=1, stdout="Failure", stderr="Error")
-        
-        mock_client = MagicMock()
-        mock_pr = MagicMock()
-        
-        # --- Act ---
-        # 【修正點】同樣更新這裡
-        agent = ReviewAgent(repo_path="/tmp/test_repo", github_client=mock_client)
-        agent.process_open_prs([mock_pr])
-        
-        # --- Assert ---
-        # 驗證 PR 沒有被合併
-        mock_pr.merge.assert_not_called()
-        
-        # 驗證是否有留言 (create_issue_comment)
-        # 這裡假設您的代碼會在失敗時留言，如果沒有實作留言功能，這行可以拿掉
-        # mock_pr.create_issue_comment.assert_called() 
+    # A sample of realistic pytest failure output
+    failed_test_output = """
+    =========================== FAILURES ===========================
+    ____________________ test_analyst_process ____________________
 
-if __name__ == '__main__':
-    unittest.main()
+        def test_analyst_process():
+            analyst = AnalystCore()
+            research_notes = [{"url": "http://example.com", "content": "Test content"}]
+    >       assert analyst.process(research_notes) != []
+    E       AssertionError: assert [] != []
+    E        +  where [] = <bound method AnalystCore.process of <product.analyst_core.AnalystCore object at 0x10e8d6d10>>([{'url': 'http://example.com', 'content': 'Test content'}])
+    E        +    where <bound method AnalystCore.process of <product.analyst_core.AnalystCore object at 0x10e8d6d10>> = <product.analyst_core.AnalystCore object at 0x10e8d6d10>.process
+
+    product/tests/test_analyst.py:15: AssertionError
+    """
+
+    # 2. Act: Call the method to be tested
+    analysis_result = review_agent.analyze_failure(failed_test_output)
+
+    # 3. Assert: Verify the results
+    mock_llm.invoke.assert_called_once()
+    assert analysis_result == expected_analysis
+
+def test_write_history(review_agent):
+    """
+    Test that write_history appends to the history file in the correct format.
+    """
+    # 1. Arrange
+    pr_number = 101
+    analysis = FailureAnalysis(
+        error_type="PydanticValidationError",
+        root_cause="Mock object was passed to a Pydantic model which expects concrete values.",
+        fix_suggestion="When testing Pydantic models, use dictionaries or string literals instead of MagicMock objects for input data."
+    )
+
+    # Mock open() to capture what's being written to the file
+    m_open = mock_open()
+    with patch('builtins.open', m_open):
+        # 2. Act
+        review_agent.write_history(pr_number, analysis)
+
+        # 3. Assert
+        m_open.assert_called_once_with('studio/review_history.md', 'a', encoding='utf-8')
+        handle = m_open()
+        
+        # Grab all calls to write() and join them
+        written_content = "".join(call.args[0] for call in handle.write.call_args_list)
+
+        assert f"## [PR #{pr_number}] ReviewAgent Failure" in written_content
+        assert "- **Error Type**: PydanticValidationError" in written_content
+        assert "- **Root Cause**: Mock object was passed to a Pydantic model which expects concrete values." in written_content
+        assert "- **Fix Suggestion**: When testing Pydantic models, use dictionaries or string literals instead of MagicMock objects for input data." in written_content

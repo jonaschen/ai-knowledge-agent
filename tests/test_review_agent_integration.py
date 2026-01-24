@@ -2,7 +2,7 @@ import subprocess
 import pytest
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from studio.review_agent import ReviewAgent
 
@@ -58,7 +58,17 @@ def test_process_prs_rejects_pr_with_failing_tests(git_repo):
     mock_pr.merge = fake_merge
     mock_pr.create_issue_comment.return_value = True
 
-    agent = ReviewAgent(repo_path=str(git_repo), github_client=MagicMock())
+    with patch('studio.review_agent.ChatVertexAI'), \
+         patch('studio.review_agent.Github') as mock_github:
+
+        # Configure the mock to return the mock_pr
+        mock_repo = MagicMock()
+        mock_repo.get_pull.return_value = mock_pr
+        mock_github.return_value.get_repo.return_value = mock_repo
+
+        agent = ReviewAgent(repo_name="test/repo")
+        # Manually override the repo_path for the test's isolated git environment
+        agent.repo_path = str(git_repo)
 
     original_cwd = os.getcwd()
     os.chdir(git_repo)

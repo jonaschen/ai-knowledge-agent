@@ -4,17 +4,58 @@ import logging
 import sys
 from github import Github
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+import datetime
+from langchain_google_vertexai import ChatVertexAI
 
 # Load environment variables
 load_dotenv()
+
+class FailureAnalysis(BaseModel):
+    """Data model for structured failure analysis."""
+    error_type: str = Field(description="The specific Python error type, e.g., 'AssertionError', 'PydanticValidationError'.")
+    root_cause: str = Field(description="A concise, one-sentence explanation of the underlying problem.")
+    fix_suggestion: str = Field(description="An actionable instruction for the developer to fix the issue.")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class ReviewAgent:
-    def __init__(self, repo_path: str, github_client):
-        self.repo_path = repo_path
-        self.github_client = github_client
+    def __init__(self, repo_name: str):
+        self.repo_path = os.getcwd()
+        self.github_client = Github(os.getenv('GITHUB_TOKEN'))
+        self.repo = self.github_client.get_repo(repo_name)
+        self.llm = ChatVertexAI(model_name="gemini-1.5-flash")
+
+    def analyze_failure(self, test_output: str) -> FailureAnalysis:
+        """Analyzes pytest failure output using a structured LLM to find the root cause."""
+        structured_llm = self.llm.with_structured_output(FailureAnalysis)
+
+        prompt_text = (
+            "You are a senior QA engineer. Your task is to analyze the following pytest failure log and "
+            "determine the root cause. Provide a concise, one-sentence explanation of the problem and a "
+            "clear, actionable suggestion for the developer. Respond with a JSON object that strictly "
+            "adheres to the `FailureAnalysis` schema."
+        )
+
+        # The `invoke` method can take a simple string or a list of messages.
+        structured_llm = self.llm.with_structured_output(FailureAnalysis)
+        analysis = structured_llm.invoke(f"{prompt_text}\n\n---\n\n{test_output}")
+
+        return analysis
+
+    def write_history(self, pr_number: int, analysis: FailureAnalysis):
+        """Appends a structured analysis of a test failure to the history file."""
+        log_entry = (
+            f"## [PR #{pr_number}] ReviewAgent Failure\n"
+            f"- **Date**: {datetime.date.today().isoformat()}\n"
+            f"- **Error Type**: {analysis.error_type}\n"
+            f"- **Root Cause**: {analysis.root_cause}\n"
+            f"- **Fix Suggestion**: {analysis.fix_suggestion}\n"
+            f"- **Tags**: #review-agent, #{analysis.error_type.lower()}\n\n"
+        )
+        with open('studio/review_history.md', 'a', encoding='utf-8') as f:
+            f.write(log_entry)
 
     def process_open_prs(self, open_prs):
         """
@@ -60,21 +101,27 @@ class ReviewAgent:
                     
                     else:
                         logging.warning(f"❌ Tests failed for PR #{pr.number}.")
+                        test_output = test_result.stdout + "\n" + test_result.stderr
                         
-                        # --- [NEW] Feedback Loop: Comment on GitHub ---
-                        error_log = test_result.stdout[-2000:] + "\n" + test_result.stderr[-2000:] # 取最後 2000 字避免太長
+                        # AI-powered failure analysis
+                        logging.info("Analyzing failure with AI...")
+                        analysis = self.analyze_failure(test_output)
+
+                        # Log analysis to history
+                        self.write_history(pr.number, analysis)
+
+                        # Create a formatted comment for the PR
                         comment_body = (
                             f"## ❌ Automated Review Failed\n\n"
-                            f"**ReviewAgent** ran tests and found errors. Please fix them and push a new commit.\n\n"
-                            f"<details>\n<summary>Click to see Error Log</summary>\n\n"
-                            f"```text\n{error_log}\n```\n"
-                            f"\n</details>"
+                            f"**ReviewAgent v2.0** has analyzed the test failure and determined the following:\n\n"
+                            f"- **Error Type**: `{analysis.error_type}`\n"
+                            f"- **Root Cause**: {analysis.root_cause}\n"
+                            f"- **Fix Suggestion**: {analysis.fix_suggestion}\n\n"
+                            f"Please address the issue and push a new commit."
                         )
                         
-                        # 檢查是否已經留言過同樣的錯誤 (避免洗版) - 這裡做簡單處理，直接留言
-                        logging.info(f"Posting error report to PR #{pr.number}...")
+                        logging.info(f"Posting analysis to PR #{pr.number}...")
                         pr.create_issue_comment(comment_body)
-                        # ---------------------------------------------
 
                 except subprocess.CalledProcessError as e:
                     logging.error(f"Git command failed for PR #{pr.number}: {e}")

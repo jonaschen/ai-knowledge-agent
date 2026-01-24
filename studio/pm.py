@@ -4,15 +4,13 @@ from langchain_google_vertexai import ChatVertexAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
-# Load environment variables from .env file
-load_dotenv()
-
 class ProductManager:
     """
     High-level planner. Generates execution plans in JSON format.
     """
     def __init__(self):
         """Initializes the ProductManager with the standardized LLM wrapper."""
+        load_dotenv()
         self.llm = ChatVertexAI(model="gemini-2.5-pro", temperature=0.0)
         # You may need to define a prompt and parser as well
         # This is a sample structure
