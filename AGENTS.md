@@ -64,8 +64,6 @@ All agents MUST respect this structure. **DO NOT** delete files listed here unle
 * **Testing:** All PRs must include a test file in `tests/`.
 
 ---
-<<<<<<< Updated upstream
-=======
 
 ## 5. Knowledge Management & Continuous Learning (The Memory)
 
@@ -97,19 +95,3 @@ All entries in `studio/review_history.md` MUST follow this format to ensure mach
 
 * If a PR is closed or code is reverted, the lesson learned must be preserved in `review_history.md`.
 * **Jules (Developer):** Before writing any code, you **MUST** read `studio/rules.md` (for best practices) and `studio/review_history.md` (for recent pitfalls).
->>>>>>> Stashed changes
-
-## 5. Knowledge Management & Continuous Learning (The Memory)
-
-To prevent repetitive mistakes and "Agentic Loops", all agents must adhere to the following memory protocols:
-
-### Review History is the Oracle
-The file `studio/review_history.md` contains the log of past PR failures, error analyses, and architectural decisions.
-
-* **Jules (Developer):** Before writing any code, you **MUST** read `studio/review_history.md`. Check if a similar task has failed before. If so, analyze the "Root Cause" and "Fix Suggestion" to avoid repeating the same mistake.
-* **ReviewAgent:** You are the scribe. You must update this file with test results, specifically noting why a test failed (e.g., "Pydantic Mock Error").
-* **Architect:** When planning a new feature or recovery, refer to this history to adjust the strategy.
-
-### Failure is Knowledge
-* If a PR is closed or code is reverted, the lesson learned must be preserved in `studio/review_history.md`.
-* Never delete history from this file unless it is a refactor of the history itself.
