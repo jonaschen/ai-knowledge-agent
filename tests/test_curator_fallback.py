@@ -2,7 +2,11 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import requests
-from src.curator import search_google_books
+import os
+
+os.environ["TAVILY_API_KEY"] = "TAVILY_API_KEY"
+
+from src.curator import Curator
 
 class TestSearchFallback(unittest.TestCase):
 
@@ -14,6 +18,7 @@ class TestSearchFallback(unittest.TestCase):
         mock_google_response.status_code = 429
         mock_google_response.json.return_value = {"error": "Quota Exceeded"}
         mock_requests_get.return_value = mock_google_response
+        mock_requests_get.side_effect = requests.exceptions.RequestException("API Error")
 
         # 2. Setup the mock for the Tavily fallback
         mock_tavily_search_results = {
@@ -38,7 +43,8 @@ class TestSearchFallback(unittest.TestCase):
 
         # 3. Execute the function under test
         topic = "behavioral economics"
-        books = search_google_books(topic)
+        curator = Curator()
+        books = curator.search(topic)
 
         # 4. Assert the behavior
         # Verify Google Books API was called
@@ -77,7 +83,8 @@ class TestSearchFallback(unittest.TestCase):
 
         # 3. Execute the function under test
         topic = "behavioral economics"
-        books = search_google_books(topic)
+        curator = Curator()
+        books = curator.search(topic)
 
         # 4. Assert the behavior
         mock_requests_get.assert_called_once()
