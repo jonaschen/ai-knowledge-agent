@@ -31,7 +31,6 @@ class TestProductManager(unittest.TestCase):
         mock_chat_vertex_ai.return_value = mock_llm_instance
 
         # 2. Create the mock LLM response with a .content attribute containing the JSON string.
-        #    This is the core of the user's requested fix.
         mock_llm_response = AIMessage(content='{"plan": ["Step 1: Do this", "Step 2: Do that"]}')
 
         # 3. Configure the LLM instance's invoke method to return our mock response.

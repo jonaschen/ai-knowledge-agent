@@ -20,6 +20,7 @@ class TestReviewAgent(unittest.TestCase):
         mock_client = MagicMock()
         mock_repo = MagicMock()
         mock_pr = MagicMock()
+        mock_pr.draft = False
         
         # 設定回傳鏈：client -> repo -> pulls -> pr
         # 注意：我們現在是傳入 client，所以不需要 MockGithub class 來生成 client
