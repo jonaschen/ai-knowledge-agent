@@ -4,9 +4,14 @@ import logging
 import sys
 from github import Github
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
 import datetime
-from langchain_google_vertexai import ChatVertexAI
+
+# The LLM import: keep but allow tests to patch or inject an llm
+try:
+    from langchain_google_vertexai import ChatVertexAI
+except Exception:
+    ChatVertexAI = None  # allow tests to inject a mock or run without the dependency
 
 # Load environment variables
 load_dotenv()
@@ -21,15 +26,77 @@ class FailureAnalysis(BaseModel):
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class ReviewAgent:
-    def __init__(self, repo_path: str, github_client):
-        self.repo_path = repo_path
-        self.github_client = github_client
-        self.llm = ChatVertexAI(model_name="gemini-1.5-flash")
+    def __init__(self, repo_path: str = None, github_client=None, llm=None, repo_name: str = None):
+        """
+        repo_path: local path to the repository (used for running git/pytest)
+        github_client: injected Github client (MagicMock in tests)
+        llm: injected LLM client (allows tests to set a mock)
+        repo_name: optional repo name (owner/repo) — kept for compatibility
+        """
+        # Prefer repo_path if provided; otherwise derive from repo_name (if needed)
+        self.repo_path = repo_path or (repo_name if repo_name else None)
+        self.github_client = github_client or (Github(os.getenv("GITHUB_TOKEN")) if os.getenv("GITHUB_TOKEN") else None)
+
+        # Allow injection of llm for tests; otherwise instantiate if available
+        if llm is not None:
+            self.llm = llm
+        elif ChatVertexAI is not None:
+            try:
+                self.llm = ChatVertexAI(model_name="gemini-1.5-flash")
+            except Exception:
+                logging.exception("Failed to initialize ChatVertexAI; proceeding without llm.")
+                self.llm = None
+        else:
+            self.llm = None
 
     def analyze_failure(self, test_output: str) -> FailureAnalysis:
-        """Analyzes pytest failure output using a structured LLM to find the root cause."""
-        structured_llm = self.llm.with_structured_output(FailureAnalysis)
+        """Analyzes pytest failure output using a structured LLM to find the root cause.
 
+        Returns a FailureAnalysis instance. If the LLM output cannot be parsed into the schema,
+        a fallback FailureAnalysis with the raw output is returned.
+        """
+        if not self.llm:
+            # No LLM available — return a fallback analysis
+            logging.warning("No LLM client available; returning fallback FailureAnalysis.")
+            return FailureAnalysis(
+                error_type="NoLLM",
+                root_cause="No LLM client available to analyze failure.",
+                fix_suggestion="Provide an llm client to the ReviewAgent or patch the tests to inject a mock."
+            )
+
+        # Create a structured-output wrapper once
+        try:
+            structured_llm = self.llm.with_structured_output(FailureAnalysis)
+        except Exception:
+            # Some LLM SDKs may not expose with_structured_output the same way.
+            logging.exception("Failed to create structured LLM. Falling back to raw invoke and best-effort parsing.")
+            try:
+                raw = self.llm.invoke(test_output)
+            except Exception as e:
+                logging.exception("LLM invocation failed.")
+                return FailureAnalysis(
+                    error_type="LLMInvocationError",
+                    root_cause=str(e),
+                    fix_suggestion="Check LLM connectivity and API keys."
+                )
+            # If we get here, try to coerce into FailureAnalysis if it's a dict
+            if isinstance(raw, dict):
+                try:
+                    return FailureAnalysis.parse_obj(raw)
+                except PydanticValidationError:
+                    return FailureAnalysis(
+                        error_type="UnstructuredLLMOutput",
+                        root_cause=str(raw),
+                        fix_suggestion="LLM returned unexpected schema; please inspect the model output."
+                    )
+            else:
+                return FailureAnalysis(
+                    error_type="UnstructuredLLMOutput",
+                    root_cause=str(raw),
+                    fix_suggestion="LLM returned non-dict output; please inspect the model output."
+                )
+
+        # Compose prompt
         prompt_text = (
             "You are a senior QA engineer. Your task is to analyze the following pytest failure log and "
             "determine the root cause. Provide a concise, one-sentence explanation of the problem and a "
@@ -37,11 +104,39 @@ class ReviewAgent:
             "adheres to the `FailureAnalysis` schema."
         )
 
-        # The `invoke` method can take a simple string or a list of messages.
-        structured_llm = self.llm.with_structured_output(FailureAnalysis)
-        analysis = structured_llm.invoke(f"{prompt_text}\n\n---\n\n{test_output}")
+        try:
+            # The LLM may accept a single string; SDKs vary.
+            result = structured_llm.invoke(f"{prompt_text}\n\n---\n\n{test_output}")
+        except Exception as e:
+            logging.exception("Structured LLM invocation failed.")
+            # Last-resort fallback: record raw output
+            return FailureAnalysis(
+                error_type="LLMError",
+                root_cause=str(e),
+                fix_suggestion="LLM invocation failed; see logs for details."
+            )
 
-        return analysis
+        # Result may already be a FailureAnalysis instance, a dict, or a raw string.
+        if isinstance(result, FailureAnalysis):
+            return result
+
+        if isinstance(result, dict):
+            try:
+                return FailureAnalysis.parse_obj(result)
+            except PydanticValidationError:
+                logging.exception("LLM returned dict that failed to validate against FailureAnalysis.")
+                return FailureAnalysis(
+                    error_type=result.get("error_type", "Unknown"),
+                    root_cause=result.get("root_cause", str(result)),
+                    fix_suggestion=result.get("fix_suggestion", "See raw output.")
+                )
+
+        # If result is a string, try to parse or put it into a fallback model
+        return FailureAnalysis(
+            error_type="UnstructuredLLMOutput",
+            root_cause=str(result),
+            fix_suggestion="LLM returned free text. Please check the model output and transform into the FailureAnalysis schema."
+        )
 
     def write_history(self, pr_number: int, analysis: FailureAnalysis):
         """Appends a structured analysis of a test failure to the history file."""
@@ -53,6 +148,8 @@ class ReviewAgent:
             f"- **Fix Suggestion**: {analysis.fix_suggestion}\n"
             f"- **Tags**: #review-agent, #{analysis.error_type.lower()}\n\n"
         )
+        # Ensure directory exists
+        os.makedirs(os.path.dirname('studio/review_history.md'), exist_ok=True)
         with open('studio/review_history.md', 'a', encoding='utf-8') as f:
             f.write(log_entry)
 

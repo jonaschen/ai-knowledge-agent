@@ -66,7 +66,7 @@ def test_process_prs_rejects_pr_with_failing_tests(git_repo):
         mock_repo.get_pull.return_value = mock_pr
         mock_github.return_value.get_repo.return_value = mock_repo
 
-        agent = ReviewAgent(repo_name="test/repo")
+        agent = ReviewAgent(repo_path=str(git_repo), github_client=mock_github.return_value)
         # Manually override the repo_path for the test's isolated git environment
         agent.repo_path = str(git_repo)
 

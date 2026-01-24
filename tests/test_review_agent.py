@@ -12,28 +12,26 @@ def review_agent():
     # Mock the GitHub and VertexAI clients to avoid real API calls
     with patch('studio.review_agent.Github') as MockGithub, \
          patch('studio.review_agent.ChatVertexAI') as MockChatVertexAI:
-        # Ensure GITHUB_TOKEN is set for the constructor
-        assert os.getenv("GITHUB_TOKEN"), "GITHUB_TOKEN not found in .env"
-        agent = ReviewAgent(repo_name="test/repo")
-        agent.llm = MockChatVertexAI.return_value
+        # Create a mock github client and llm
+        mock_github_client = MagicMock()
+        mock_llm = MockChatVertexAI.return_value
+        # Construct ReviewAgent with explicit repo_path and injected mocks
+        agent = ReviewAgent(repo_path="/tmp/test_repo", github_client=mock_github_client, llm=mock_llm)
         return agent
 
 def test_analyze_failure_with_ai(review_agent):
-    """
-    Test that analyze_failure correctly uses ChatVertexAI to process test output.
-    """
-    # 1. Arrange: Mock the AI model and its response
+    """Test that analyze_failure correctly uses ChatVertexAI to process test output."""
+    # Arrange: Mock the AI model and its response
     mock_llm = MagicMock()
-    # This is the structured data we expect the AI to return
     expected_analysis = FailureAnalysis(
         error_type="AssertionError",
         root_cause="The 'process' method in 'analyst_core.py' returned an empty list instead of a populated one, indicating a failure in the data transformation logic.",
         fix_suggestion="Verify the input data to 'process' and ensure the transformation logic correctly handles the provided fixture. Check for edge cases where the input might be valid but result in no output."
     )
     mock_llm.invoke.return_value = expected_analysis
+    # Inject mock llm into the agent
     review_agent.llm = mock_llm
 
-    # A sample of realistic pytest failure output
     failed_test_output = """
     =========================== FAILURES ===========================
     ____________________ test_analyst_process ____________________
@@ -49,18 +47,15 @@ def test_analyze_failure_with_ai(review_agent):
     product/tests/test_analyst.py:15: AssertionError
     """
 
-    # 2. Act: Call the method to be tested
+    # Act
     analysis_result = review_agent.analyze_failure(failed_test_output)
 
-    # 3. Assert: Verify the results
+    # Assert
     mock_llm.invoke.assert_called_once()
     assert analysis_result == expected_analysis
 
 def test_write_history(review_agent):
-    """
-    Test that write_history appends to the history file in the correct format.
-    """
-    # 1. Arrange
+    """Test that write_history appends to the history file in the correct format."""
     pr_number = 101
     analysis = FailureAnalysis(
         error_type="PydanticValidationError",
@@ -68,17 +63,11 @@ def test_write_history(review_agent):
         fix_suggestion="When testing Pydantic models, use dictionaries or string literals instead of MagicMock objects for input data."
     )
 
-    # Mock open() to capture what's being written to the file
     m_open = mock_open()
     with patch('builtins.open', m_open):
-        # 2. Act
         review_agent.write_history(pr_number, analysis)
-
-        # 3. Assert
         m_open.assert_called_once_with('studio/review_history.md', 'a', encoding='utf-8')
         handle = m_open()
-        
-        # Grab all calls to write() and join them
         written_content = "".join(call.args[0] for call in handle.write.call_args_list)
 
         assert f"## [PR #{pr_number}] ReviewAgent Failure" in written_content
