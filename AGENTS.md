@@ -95,3 +95,37 @@ All entries in `studio/review_history.md` MUST follow this format to ensure mach
 
 * If a PR is closed or code is reverted, the lesson learned must be preserved in `review_history.md`.
 * **Jules (Developer):** Before writing any code, you **MUST** read `studio/rules.md` (for best practices) and `studio/review_history.md` (for recent pitfalls).
+
+
+
+---
+
+
+
+## 6. The Copilot Protocol (Model Diversity)
+
+To avoid "Gemini Hallucination Loops", the Engineer (Jules) MUST use GitHub Copilot as a Consultant during the REFACTOR phase.
+
+### Protocol: "The Second Opinion"
+
+1. **Phase 1 (Red):** Architect & Jules define the test.
+
+2. **Phase 2 (Green):** Jules (Gemini) writes implementation to pass the test.
+
+3. **Phase 3 (Refactor - The Copilot Check):**
+
+* **Trigger:** Once tests pass (Green).
+
+* **Action:** Select the newly written function/class.
+
+* **Query to Copilot:** "Review this code for optimization, security flaws, and 'Pythonic' idioms. Do not change the logic."
+
+* **Decision:**
+
+* If Copilot suggests a cleaner syntax (e.g., list comprehension vs loop), **APPLY** it.
+
+* If Copilot warns about security (e.g., injection), **FIX** it.
+
+* If Copilot changes logic, **REJECT** it.
+
+* **Validation:** Run tests again. If Pass -> Commit.
