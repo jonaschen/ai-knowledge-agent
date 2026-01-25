@@ -1,19 +1,21 @@
-# AI Software Studio Constitution (v2.2)
+AI Software Studio Constitution (v2.3)
 
-## 1. Core Philosophy: Evidentialism & Automation
+1. Core Philosophy: Evidentialism & Automation
 
-* **Objective:** Build a self-evolving "Deep Context Reader" system.
-* **Principle 1: Evidentialism.** No hallucinations. All claims must be backed by Researcher findings.
-* **Principle 2: Automation.** The `studio/` layer manages the `product/` layer.
-* **Principle 3: TDD.** Red-Green-Refactor is mandatory for all code changes.
+Objective: Build a self-evolving "Deep Context Reader" system.
 
----
+Principle 1: Evidentialism. No hallucinations. All claims must be backed by Researcher findings.
 
-## 2. Official Directory Structure (The Territory)
+Principle 2: Automation. The studio/ layer manages the product/ layer.
 
-All agents MUST respect this structure. **DO NOT** delete files listed here unless explicitly instructed.
+Principle 3: TDD. Red-Green-Refactor is mandatory for all code changes.
 
-```text
+---\
+
+2. Official Directory Structure (The Territory)
+
+All agents MUST respect this structure. DO NOT delete files listed here unless explicitly instructed.
+
 /
 ├── product/                <-- [Production Line] The core content generation system
 │   ├── main.py             # Entry point & Orchestrator
@@ -36,42 +38,42 @@ All agents MUST respect this structure. **DO NOT** delete files listed here unle
 │   └── ...
 └── AGENTS.md               # [The Constitution] Single Source of Truth
 
-```
 
----
+3. Agent Responsibilities
 
-## 3. Agent Responsibilities
+Studio Agents (Internal Tools)
 
-### Studio Agents (Internal Tools)
+Architect: Reads this file. Plans features. Enforces TDD.
 
-* **Architect:** Reads this file. Plans features. Enforces TDD.
-* **ReviewAgent:** Monitors PRs. Runs `pytest`. Merges **ONLY** if green.
-* **ProductManager (PM):** High-level planner. Generates execution plans JSON.
+ReviewAgent: Monitors PRs. Runs pytest. Merges ONLY if green.
 
-### Product Agents (The Application)
+ProductManager (PM): High-level planner. Generates execution plans JSON.
 
-* **Curator:** Fetches books via Google Books. Falls back to Tavily on 429 errors.
-* **Researcher:** Searches the web for "deep reviews" and "counter-arguments".
-* **Analyst:** Synthesizes book content + researcher notes into a recursive thematic tree.
-* **Broadcaster:** Converts the tree into a structured dialogue script.
+Product Agents (The Application)
 
----
+Curator: Fetches books via Google Books. Falls back to Tavily on 429 errors.
 
-## 4. Coding Standards
+Researcher: Searches the web for "deep reviews" and "counter-arguments".
 
-* **Imports:** Use absolute imports where possible (e.g., `from product.researcher import Researcher`).
-* **Error Handling:** Never crash on API limits. Implement fallbacks (e.g., Google -> Tavily).
-* **Testing:** All PRs must include a test file in `tests/`.
+Analyst: Synthesizes book content + researcher notes into a recursive thematic tree.
 
----
+Broadcaster: Converts the tree into a structured dialogue script.
 
-## 5. Knowledge Management & Continuous Learning (The Memory)
+4. Coding Standards
+
+Imports: Use absolute imports where possible (e.g., from product.researcher import Researcher).
+
+Error Handling: Never crash on API limits. Implement fallbacks (e.g., Google -> Tavily).
+
+Testing: All PRs must include a test file in tests/.
+
+5. Knowledge Management & Continuous Learning (The Memory)
 
 To prevent repetitive mistakes and "Agentic Loops", all agents must adhere to the following memory protocols:
 
-### Structured Logging (Mandatory)
+Structured Logging (Mandatory)
 
-All entries in `studio/review_history.md` MUST follow this format to ensure machine readability:
+All entries in studio/review_history.md MUST follow this format to ensure machine readability:
 
 ## [PR #<ID>] <Component> Failure
 - **Date**: YYYY-MM-DD
@@ -81,74 +83,64 @@ All entries in `studio/review_history.md` MUST follow this format to ensure mach
 - **Tags**: #mocking, #pydantic, #api
 
 
-### Context Window Management (Archival Protocol)
+Context Window Management (Archival Protocol)
 
-* **Trigger:** When `studio/review_history.md` exceeds **500 lines**.
-* **Action (Architect):**
-1. **Summarize:** Extract universal "Fix Patterns" and add them to `studio/rules.md`.
-2. **Archive:** Move the detailed logs to `studio/archive/review_history_YYYY_MM.md`.
-3. **Reset:** Clear `studio/review_history.md` to keep it lightweight.
+Trigger: When studio/review_history.md exceeds 500 lines.
 
+Action (Architect):
 
+Summarize: Extract universal "Fix Patterns" and add them to studio/rules.md.
 
-### Failure is Knowledge
+Archive: Move the detailed logs to studio/archive/review_history_YYYY_MM.md.
 
-* If a PR is closed or code is reverted, the lesson learned must be preserved in `review_history.md`.
-* **Jules (Developer):** Before writing any code, you **MUST** read `studio/rules.md` (for best practices) and `studio/review_history.md` (for recent pitfalls).
+Reset: Clear studio/review_history.md to keep it lightweight.
 
+Failure is Knowledge
 
+If a PR is closed or code is reverted, the lesson learned must be preserved in review_history.md.
 
----
+Jules (Developer): Before writing any code, you MUST read studio/rules.md (for best practices) and studio/review_history.md (for recent pitfalls).
 
+---\
 
+6. The Copilot Protocol (Model Diversity & Enforcement)
 
-## 6. The Copilot Protocol (Model Diversity)
+Core Principle: Use heterogeneous models (Gemini + Copilot) to reduce hallucinations. This process is NON-NEGOTIABLE.
 
-To avoid "Gemini Hallucination Loops", the Engineer (Jules) MUST use GitHub Copilot as a Consultant during the REFACTOR phase.
+Workflow: The "Double Check" Mechanism
 
-### Protocol: "The Second Opinion"
+Develop (Gemini): Jules writes the code and ensures tests pass (Green state).
 
-1. **Phase 1 (Red):** Architect & Jules define the test.
+Consult (Copilot): Before committing, Jules MUST invoke the GitHub Copilot CLI.
 
-2. **Phase 2 (Green):** Jules (Gemini) writes implementation to pass the test.
+Command: gh copilot suggest "Review this code for optimization and security: [paste code snippet]"
 
-3. **Phase 3 (Refactor - The Copilot Check):**
+Action: Analyze Copilot's response.
 
-* **Trigger:** Once tests pass (Green).
+If valid improvement: Apply it (Refactor).
 
-* **Action:** Select the newly written function/class.
+If hallucination/breakage: Reject it.
 
-* **Query to Copilot:** "Review this code for optimization, security flaws, and 'Pythonic' idioms. Do not change the logic."
+Documentation (The Audit Trail): Jules MUST append a COCKPIT_CONSULTATION_LOG.md file (or section in PR description) with the consultation details.
 
-* **Decision:**
+Circuit Breaker (Anti-Loop Protocol)
 
-* If Copilot suggests a cleaner syntax (e.g., list comprehension vs loop), **APPLY** it.
+To prevent infinite loops where Copilot suggestions break the build:
 
-* If Copilot warns about security (e.g., injection), **FIX** it.
+3-Strike Limit: If Copilot's suggestions cause tests to fail, you may attempt to fix it TWICE.
 
-* If Copilot changes logic, **REJECT** it.
+Abort Condition: On the 3rd failure, you MUST ABORT the refactoring process.
 
-* **Validation:** Run tests again. If Pass -> Commit.
+Fallback Action: Revert the code to the state at the end of Phase 2 (Green). Do not sacrifice correctness for optimization.
 
-4. **Circuit Breaker (Anti-Loop Protocol)**
+Logging: Explicitly state "Aborted due to Circuit Breaker" in the log.
 
-* To prevent infinite loops where Copilot suggestions break the build:
+Documentation Format
 
-* **3-Strike Limit:** If Copilot's suggestions cause tests to fail, you may attempt to fix it TWICE.
+Every Pull Request MUST include the following section. If missing, ReviewAgent will reject the PR.
 
-* **Abort Condition:** On the 3rd failure, you MUST ABORT the refactoring process.
-
-* **Fallback Action:** Revert the code to the state at the end of Phase 2 (Green). Do not sacrifice correctness for optimization.
-
-5. **Documentation (The Audit Trail)**
-
-To confirm this protocol was followed, Jules MUST append a Copilot Consultation Log to the Pull Request Description.
-
-**Format:**
-
-```text
 ## 🤖 Copilot Consultation Log
 - **Target Function**: `<name of function refactored>`
 - **Copilot Advice**: `<Summary, e.g., 'Suggested using itertools'>`
 - **Result**: `<Applied | Rejected | Aborted due to Circuit Breaker>`
-```
+
