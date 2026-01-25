@@ -67,19 +67,20 @@ class Architect:
         """
         print(f"🏗️ Architect is analyzing request: '{user_request}'...")
         
-        prompt = f"""
+        prompt_template = ChatPromptTemplate.from_template(
+            """
 You are the Chief Software Architect for the 'Deep Context Reader' project.
 Your goal is to translate a user request into a GitHub Issue for the developer, Jules.
 You MUST follow the principles and structure defined in the constitution.
 
 === YOUR CONSTITUTION (AGENTS.md) ===
-{self.constitution}
+{constitution}
 
 === DESIGN PATTERNS (MUST FOLLOW) ===
-{self.rules}
+{rules}
 
 === RECENT FAILURES (AVOID THESE) ===
-{self.history}
+{history}
 
 === USER REQUEST ===
 {user_request}
@@ -93,7 +94,16 @@ The issue must follow our strict TDD mandate:
 
 Output ONLY the GitHub Issue in the specified format. Do not add any other commentary.
 """
-        return prompt
+        )
+
+        chain = prompt_template | self.llm | StrOutputParser()
+
+        return chain.invoke({
+            "constitution": self.constitution,
+            "rules": self.rules,
+            "history": self.history,
+            "user_request": user_request
+        })
 
     def publish_issue(self, issue_content: str):
         """
@@ -140,6 +150,6 @@ if __name__ == "__main__":
         
     user_request = sys.argv[1]
     
-    architect = Architect(repo_name=REPO_NAME)
+    architect = Architect(REPO_NAME)
     plan = architect.plan_feature(user_request)
     architect.publish_issue(plan)
