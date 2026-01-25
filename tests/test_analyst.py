@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 
 # Mock the ChatVertexAI class before it's imported by the analyst_core module
 with patch('langchain_google_vertexai.ChatVertexAI') as MockChatVertexAI:
-    from src.analyst_core import app as analyst_app
+    from product.analyst_core import app as analyst_app
 
 @pytest.fixture
 def mock_llm():
@@ -66,20 +66,7 @@ def test_analyst_creates_thematic_tree_structure(mock_llm):
     assert script.count("Supporting Evidence:") == 2, "Should have supporting evidence for each core idea"
 
     # 4. Assert: Check for the new rules in the prompt
-    from src.analyst_core import THESIS_PROMPT
-    prompt_lower = THESIS_PROMPT.lower()
-    assert "metaphorical analysis" in prompt_lower
-    assert "do not invent" in prompt_lower
-    assert "must be backed by retrieved context" in prompt_lower
-    assert "external sources" in prompt_lower
-    assert "you must provide a citation" in prompt_lower
-    assert "recursive thematic tree" in prompt_lower
-    assert "root topic" in prompt_lower
-    assert "core argument" in prompt_lower
-    assert "evidence" in prompt_lower
-
-    # 4. Assert: Check for the new rules in the prompt
-    from src.analyst_core import THESIS_PROMPT
+    from product.analyst_core import THESIS_PROMPT
     prompt_lower = THESIS_PROMPT.lower()
     assert "metaphorical analysis" in prompt_lower
     assert "do not invent" in prompt_lower

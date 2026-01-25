@@ -6,12 +6,12 @@ import os
 
 os.environ["TAVILY_API_KEY"] = "TAVILY_API_KEY"
 
-from src.curator import Curator
+from product.curator import Curator
 
 class TestSearchFallback(unittest.TestCase):
 
-    @patch('src.curator.TavilyClient')
-    @patch('src.curator.requests.get')
+    @patch('product.curator.TavilyClient')
+    @patch('product.curator.requests.get')
     def test_google_books_api_failure_triggers_tavily_fallback(self, mock_requests_get, mock_tavily_client):
         # 1. RED: Setup the failure condition for Google Books API
         mock_google_response = MagicMock()
@@ -61,8 +61,8 @@ class TestSearchFallback(unittest.TestCase):
         ]
         self.assertEqual(books, expected_output)
 
-    @patch('src.curator.TavilyClient')
-    @patch('src.curator.requests.get')
+    @patch('product.curator.TavilyClient')
+    @patch('product.curator.requests.get')
     def test_google_books_api_exception_triggers_tavily_fallback(self, mock_requests_get, mock_tavily_client):
         # 1. Setup the failure condition for Google Books API
         mock_requests_get.side_effect = requests.exceptions.RequestException("Network Error")

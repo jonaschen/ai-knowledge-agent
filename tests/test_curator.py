@@ -9,8 +9,8 @@ os.environ["TAVILY_API_KEY"] = "TAVILY_API_KEY"
 
 # Mock ChatVertexAI before importing curator
 with patch('langchain_google_vertexai.ChatVertexAI') as MockChatVertexAI:
-    from src import curator
-    from src.curator import Curator
+    from product import curator
+    from product.curator import Curator
 from langchain_core.messages import HumanMessage
 
 class TestCurator(unittest.TestCase):
@@ -136,8 +136,8 @@ class TestCurator(unittest.TestCase):
         # Assert
         self.assertEqual(result, expected_dict, "The method failed to strip Markdown and parse the JSON correctly.")
 
-    @patch('src.curator.Curator._search_google_books')
-    @patch('src.curator.TavilyClient')
+    @patch('product.curator.Curator._search_google_books')
+    @patch('product.curator.TavilyClient')
     def test_curator_uses_tavily_on_google_books_failure(self, mock_tavily_client, mock_google_api):
         """
         GIVEN a Curator instance

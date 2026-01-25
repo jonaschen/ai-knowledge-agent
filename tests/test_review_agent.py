@@ -23,6 +23,7 @@ class TestReviewAgent(unittest.TestCase):
         
         # 設定回傳鏈：client -> repo -> pulls -> pr
         # 注意：我們現在是傳入 client，所以不需要 MockGithub class 來生成 client
+        mock_pr.draft = False
         mock_repo.get_pulls.return_value = [mock_pr]
         
         # 這裡不需要設定 get_repo，因為我們會在測試中直接注入依賴，
