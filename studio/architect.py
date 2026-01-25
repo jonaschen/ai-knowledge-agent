@@ -41,6 +41,19 @@ class Architect:
             print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
             self.constitution = "Focus on reliability and modularity."
 
+        # Load Knowledge Management (Rules & History)
+        try:
+            with open("studio/rules.md", "r") as f:
+                self.rules = f.read()
+        except FileNotFoundError:
+            self.rules = ""
+
+        try:
+            with open("studio/review_history.md", "r") as f:
+                self.history = f.read()
+        except FileNotFoundError:
+            self.history = ""
+
     def plan_feature(self, user_request: str) -> str:
         """
         核心邏輯：將需求轉化為 Issue
@@ -54,6 +67,12 @@ class Architect:
         === YOUR CONSTITUTION (AGENTS.md) ===
         {constitution}
         =====================================
+
+        === DESIGN PATTERNS (MUST FOLLOW) ===
+        {rules}
+
+        === RECENT FAILURES (AVOID THESE) ===
+        {history}
         
         === TDD MANDATE ===
         We follow strict Test-Driven Development (TDD).
@@ -90,6 +109,8 @@ class Architect:
         
         return chain.invoke({
             "constitution": self.constitution,
+            "rules": self.rules,
+            "history": self.history,
             "request": user_request
         })
 
