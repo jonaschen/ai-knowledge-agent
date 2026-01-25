@@ -16,14 +16,18 @@ class Architect:
     It translates high-level goals into precise, TDD-compliant GitHub Issues.
     """
     
-    def __init__(self, repo_name: str):
-        token = os.getenv("GITHUB_TOKEN")
-        if not token:
-            raise ValueError("❌ CRITICAL: GITHUB_TOKEN not found in .env file. Architect cannot work without it.")
+    def __init__(self, repo_name: Optional[str] = None, root_path: str = "."):
+        self.root_path = root_path
+        if repo_name:
+            token = os.getenv("GITHUB_TOKEN")
+            if not token:
+                raise ValueError("❌ CRITICAL: GITHUB_TOKEN not found in .env file. Architect cannot work without it.")
 
-        self.github = Github(os.getenv("GITHUB_TOKEN"))
-
-        self.repo = self.github.get_repo(repo_name)
+            self.github = Github(os.getenv("GITHUB_TOKEN"))
+            self.repo = self.github.get_repo(repo_name)
+        else:
+            self.github = None
+            self.repo = None
         
         # 使用 Gemini 2.5 Pro 作為大腦，Temperature 稍高以利於規劃
         self.llm = ChatVertexAI(
@@ -32,14 +36,30 @@ class Architect:
             max_output_tokens=8192
         )
         
-        # 載入憲法 (Constitution)
-        # 注意：搬家後 AGENTS.md 應該還是在根目錄，所以路徑可能需要調整
+        # Load constitution from the specified root path
         try:
-            with open("AGENTS.md", "r") as f:
+            agents_path = os.path.join(self.root_path, "AGENTS.md")
+            with open(agents_path, "r") as f:
                 self.constitution = f.read()
         except FileNotFoundError:
             print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
             self.constitution = "Focus on reliability and modularity."
+
+        # Load rules.md (long-term memory)
+        try:
+            rules_path = os.path.join(self.root_path, "studio", "rules.md")
+            with open(rules_path, 'r') as f:
+                self.rules = f.read()
+        except FileNotFoundError:
+            self.rules = "# No rules defined yet."
+
+        # Load review_history.md (short-term memory)
+        try:
+            history_path = os.path.join(self.root_path, "studio", "review_history.md")
+            with open(history_path, 'r') as f:
+                self.history = f.read()
+        except FileNotFoundError:
+            self.history = "# No recent failures recorded."
 
     def plan_feature(self, user_request: str) -> str:
         """
@@ -47,51 +67,33 @@ class Architect:
         """
         print(f"🏗️ Architect is analyzing request: '{user_request}'...")
         
-        system_prompt = """
-        You are the Chief Software Architect for an AI Software Studio.
-        Your goal is to manage the development of the 'Deep Context Reader' project.
-        
-        === YOUR CONSTITUTION (AGENTS.md) ===
-        {constitution}
-        =====================================
-        
-        === TDD MANDATE ===
-        We follow strict Test-Driven Development (TDD).
-        For every bug fix or feature request, you MUST instruct the developer (Jules) to:
-        1. Create a Reproduction Script or Unit Test FIRST.
-        2. Ensure the test fails (Red).
-        3. Write code to pass the test (Green).
-        
-        === USER REQUEST ===
-        {request}
-        
-        === INSTRUCTIONS ===
-        Draft a GitHub Issue in the following format. 
-        Be extremely specific about file paths (e.g., product/curator.py, tests/test_curator.py).
-        
-        Format:
-        Title: [Tag] <Concise Title>
-        Body:
-        @jules
-        <Context & Objective>
-        
-        ### Step 1: The Test (The Spec)
-        <Provide a specific test case or script>
-        
-        ### Step 2: The Implementation
-        <Provide technical guidance on what to change>
-        
-        ### Acceptance Criteria
-        <Bullet points>
-        """
-        
-        prompt = ChatPromptTemplate.from_template(system_prompt)
-        chain = prompt | self.llm | StrOutputParser()
-        
-        return chain.invoke({
-            "constitution": self.constitution,
-            "request": user_request
-        })
+        prompt = f"""
+You are the Chief Software Architect for the 'Deep Context Reader' project.
+Your goal is to translate a user request into a GitHub Issue for the developer, Jules.
+You MUST follow the principles and structure defined in the constitution.
+
+=== YOUR CONSTITUTION (AGENTS.md) ===
+{self.constitution}
+
+=== DESIGN PATTERNS (MUST FOLLOW) ===
+{self.rules}
+
+=== RECENT FAILURES (AVOID THESE) ===
+{self.history}
+
+=== USER REQUEST ===
+{user_request}
+
+=== YOUR TASK ===
+Draft a GitHub Issue with a title and body.
+The issue must follow our strict TDD mandate:
+1.  **Step 1: The Test:** Define a new Python test case in the `tests/` directory that will fail until the feature is implemented.
+2.  **Step 2: The Implementation:** Provide clear, file-specific instructions for the developer to make the test pass.
+3.  **Acceptance Criteria:** List 2-3 bullet points Erfolgskriterien.
+
+Output ONLY the GitHub Issue in the specified format. Do not add any other commentary.
+"""
+        return prompt
 
     def publish_issue(self, issue_content: str):
         """
@@ -138,6 +140,6 @@ if __name__ == "__main__":
         
     user_request = sys.argv[1]
     
-    architect = Architect(REPO_NAME)
+    architect = Architect(repo_name=REPO_NAME)
     plan = architect.plan_feature(user_request)
     architect.publish_issue(plan)
