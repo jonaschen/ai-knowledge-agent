@@ -129,3 +129,16 @@ To avoid "Gemini Hallucination Loops", the Engineer (Jules) MUST use GitHub Copi
 * If Copilot changes logic, **REJECT** it.
 
 * **Validation:** Run tests again. If Pass -> Commit.
+
+4. **Documentation (The Audit Trail)**
+
+To confirm this protocol was followed, Jules MUST append a Copilot Consultation Log to the Pull Request Description.
+
+**Format:**
+
+```text
+## 🤖 Copilot Consultation Log
+- **Target Function**: `<name of function refactored>`
+- **Copilot Advice**: `<Summary, e.g., 'Suggested using itertools'>`
+- **Action Taken**: `Applied` / `Rejected (Logic Change)` / `None (No suggestions)`
+```
