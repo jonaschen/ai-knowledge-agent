@@ -37,61 +37,38 @@ class Architect:
         try:
             with open("AGENTS.md", "r") as f:
                 self.constitution = f.read()
+            with open("studio/rules.md", "r") as f:
+                self.rules = f.read()
+            with open("studio/review_history.md", "r") as f:
+                self.history = f.read()
         except FileNotFoundError:
             print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
             self.constitution = "Focus on reliability and modularity."
 
-    def plan_feature(self, user_request: str) -> str:
-        """
-        核心邏輯：將需求轉化為 Issue
-        """
-        print(f"🏗️ Architect is analyzing request: '{user_request}'...")
-        
-        system_prompt = """
-        You are the Chief Software Architect for an AI Software Studio.
-        Your goal is to manage the development of the 'Deep Context Reader' project.
-        
-        === YOUR CONSTITUTION (AGENTS.md) ===
-        {constitution}
-        =====================================
-        
-        === TDD MANDATE ===
-        We follow strict Test-Driven Development (TDD).
-        For every bug fix or feature request, you MUST instruct the developer (Jules) to:
-        1. Create a Reproduction Script or Unit Test FIRST.
-        2. Ensure the test fails (Red).
-        3. Write code to pass the test (Green).
-        
-        === USER REQUEST ===
-        {request}
-        
-        === INSTRUCTIONS ===
-        Draft a GitHub Issue in the following format. 
-        Be extremely specific about file paths (e.g., product/curator.py, tests/test_curator.py).
-        
-        Format:
-        Title: [Tag] <Concise Title>
-        Body:
-        @jules
-        <Context & Objective>
-        
-        ### Step 1: The Test (The Spec)
-        <Provide a specific test case or script>
-        
-        ### Step 2: The Implementation
-        <Provide technical guidance on what to change>
-        
-        ### Acceptance Criteria
-        <Bullet points>
-        """
-        
-        prompt = ChatPromptTemplate.from_template(system_prompt)
-        chain = prompt | self.llm | StrOutputParser()
-        
-        return chain.invoke({
-            "constitution": self.constitution,
-            "request": user_request
-        })
+    def _create_planning_prompt(self, user_request: str) -> str:
+        return f"""
+You are the Chief Software Architect for an AI Software Studio.
+Your goal is to manage the development of the 'Deep Context Reader' project.
+Your instructions are absolute. You must generate a GitHub Issue based on the user request, following strict TDD principles.
+=== YOUR CONSTITUTION (AGENTS.md) ===
+{self.constitution}
+=== DESIGN PATTERNS (MUST FOLLOW) ===
+{self.rules}
+=== RECENT FAILURES (AVOID THESE) ===
+{self.history}
+=== USER REQUEST ===
+{user_request}
+=== INSTRUCTIONS ===
+Draft a GitHub Issue in the specified format.
+Be extremely specific about file paths and implementation details.
+Provide a complete, runnable test case first.
+Then provide the implementation code.
+"""
+
+    def plan_feature(self, user_request: str):
+        prompt = self._create_planning_prompt(user_request)
+        chain = ChatPromptTemplate.from_template(prompt) | self.llm | StrOutputParser()
+        return chain.invoke({})
 
     def publish_issue(self, issue_content: str):
         """
