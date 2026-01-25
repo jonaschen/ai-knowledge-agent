@@ -1,13 +1,11 @@
 import sys
 import os
 
-# Add src to sys.path
-sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
-
 # 導入我們寫好的模組
-from curator import app as curator_app
-from content_fetcher import search_author_interview, get_transcript_text
-from analyst_core import app as analyst_app
+from product.curator import app as curator_app
+from product.researcher import search_author_interview, get_transcript_text, get_hn_comments
+from product.analyst_core import app as analyst_app
+from product.broadcaster import generate_podcast_script, synthesize_audio
 
 def main():
     # 1. 設定目標
@@ -38,8 +36,6 @@ def main():
         youtube_text = get_transcript_text(video_id)
         
     # 2. 嘗試 Hacker News 評論 (新功能)
-    # 注意：需在 main.py上方 import get_hn_comments
-    from content_fetcher import get_hn_comments 
     hn_comments = get_hn_comments(selected_book['title'])
     
     # 3. 數據融合 (Context Fusion)
@@ -79,7 +75,6 @@ def main():
 
     # --- Phase 4: Broadcaster (語音合成) ---
     print(f"\n[Step 4] 啟動 Broadcaster Agent...")
-    from broadcaster import generate_podcast_script, synthesize_audio
     
     # 1. 生成劇本
     script = generate_podcast_script(analyst_result["draft_analysis"])
@@ -92,5 +87,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
