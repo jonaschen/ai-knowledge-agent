@@ -130,7 +130,17 @@ To avoid "Gemini Hallucination Loops", the Engineer (Jules) MUST use GitHub Copi
 
 * **Validation:** Run tests again. If Pass -> Commit.
 
-4. **Documentation (The Audit Trail)**
+4. **Circuit Breaker (Anti-Loop Protocol)**
+
+* To prevent infinite loops where Copilot suggestions break the build:
+
+* **3-Strike Limit:** If Copilot's suggestions cause tests to fail, you may attempt to fix it TWICE.
+
+* **Abort Condition:** On the 3rd failure, you MUST ABORT the refactoring process.
+
+* **Fallback Action:** Revert the code to the state at the end of Phase 2 (Green). Do not sacrifice correctness for optimization.
+
+5. **Documentation (The Audit Trail)**
 
 To confirm this protocol was followed, Jules MUST append a Copilot Consultation Log to the Pull Request Description.
 
@@ -140,5 +150,5 @@ To confirm this protocol was followed, Jules MUST append a Copilot Consultation 
 ## 🤖 Copilot Consultation Log
 - **Target Function**: `<name of function refactored>`
 - **Copilot Advice**: `<Summary, e.g., 'Suggested using itertools'>`
-- **Action Taken**: `Applied` / `Rejected (Logic Change)` / `None (No suggestions)`
+- **Result**: `<Applied | Rejected | Aborted due to Circuit Breaker>`
 ```
