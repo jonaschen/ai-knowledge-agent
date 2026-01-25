@@ -1,89 +1,61 @@
 import unittest
-from unittest.mock import patch, mock_open
-from datetime import datetime
-import re
+from unittest.mock import patch, MagicMock
+import subprocess
 
-# Assume the new ReviewAgent will be in studio/review_agent.py
-from studio.review_agent import ReviewAgentV2
+# We will create the ReviewAgent class that makes this test pass
+from studio.review_agent import ReviewAgent
 
-# Sample pytest failure output for a hypothetical PR #101
-MOCK_PYTEST_FAILURE_OUTPUT = """
-============================= test session starts ==============================
-...
-collected 1 item
+class TestReviewAgent(unittest.TestCase):
 
-tests/test_curator.py F                                                  [100%]
-
-=================================== FAILURES ===================================
-___________________________ test_curator_api_timeout ___________________________
-
-    def test_curator_api_timeout():
-        # Simulate a Google Books API timeout
-        with patch('product.curator.requests.get') as mock_get:
-            mock_get.side_effect = requests.exceptions.Timeout
->           with pytest.raises(APITimeout):
-E           Failed: DID NOT RAISE <class 'product.curator.APITimeout'>
-tests/test_curator.py:42: Failed
-=========================== short test summary info ============================
-FAILED tests/test_curator.py::test_curator_api_timeout - Failed: DID NOT RAI...
-============================== 1 failed in 0.12s ===============================
-"""
-
-class TestReviewAgentV2(unittest.TestCase):
-
-    def setUp(self):
-        self.agent = ReviewAgentV2()
-        self.pr_id = 101
-        self.today = datetime.now().strftime("%Y-%m-%d")
-
-    def test_analyze_failure(self):
+    @patch('subprocess.run')
+    @patch('studio.review_agent.git.Repo')
+    def test_process_pr_success_and_merge(self, mock_repo, mock_subprocess_run):
         """
-        Tests if the agent can parse pytest output into a structured dictionary.
+        GIVEN a pull request is ready for review
+        WHEN the tests pass
+        THEN the agent should merge the branch.
         """
-        analysis = self.agent.analyze_failure(MOCK_PYTEST_FAILURE_OUTPUT, self.pr_id)
+        # Arrange: Mock a successful pytest run
+        mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
 
-        self.assertEqual(analysis['pr_id'], self.pr_id)
-        self.assertEqual(analysis['component'], 'Curator')
-        self.assertEqual(analysis['error_type'], 'APITimeout Handling Error')
-        self.assertIn("Failed: DID NOT RAISE", analysis['root_cause'])
-        self.assertIn("tests/test_curator.py", analysis['root_cause'])
+        # Arrange: Mock the Git repository
+        mock_repo_instance = mock_repo.return_value
+        mock_repo_instance.merge_base.return_value = ['some_commit_hash']
 
-    @patch("builtins.open", new_callable=mock_open)
-    def test_write_history(self, mock_file):
+        # Act
+        agent = ReviewAgent(repo_path='.')
+        result = agent.process_pr(branch_name='feature/new-thing')
+
+        # Assert
+        mock_subprocess_run.assert_called_once_with(['pytest'], capture_output=True, text=True, check=False)
+        mock_repo_instance.git.merge.assert_called_once_with('feature/new-thing')
+        self.assertTrue(result, "Process should return True on success")
+        print("\n✅ test_process_pr_success_and_merge: PASSED")
+
+
+    @patch('subprocess.run')
+    @patch('studio.review_agent.git.Repo')
+    def test_process_pr_failure_no_merge(self, mock_repo, mock_subprocess_run):
         """
-        Tests if the agent formats and appends the failure log correctly.
+        GIVEN a pull request is ready for review
+        WHEN the tests fail
+        THEN the agent should NOT merge the branch.
         """
-        # Step 1: Define a pre-canned analysis dictionary
-        analysis = {
-            'pr_id': self.pr_id,
-            'component': 'Curator',
-            'error_type': 'APITimeout Handling Error',
-            'root_cause': "Failed: DID NOT RAISE <class 'product.curator.APITimeout'> in tests/test_curator.py",
-            'fix_pattern': "Ensure custom exceptions are properly raised and caught in tests. Use `pytest.raises` context manager correctly.",
-            'tags': "#mocking, #api, #timeout"
-        }
+        # Arrange: Mock a failed pytest run
+        mock_subprocess_run.return_value = MagicMock(returncode=1, stdout="Failure", stderr="Test failed")
 
-        # Step 2: Write the history
-        self.agent.write_history(analysis)
+        # Arrange: Mock the Git repository
+        mock_repo_instance = mock_repo.return_value
 
-        # Step 4: Verify the output format
-        mock_file.assert_called_once_with('studio/review_history.md', 'a')
-        handle = mock_file()
+        # Act
+        agent = ReviewAgent(repo_path='.')
+        result = agent.process_pr(branch_name='feature/broken-thing')
 
-        expected_content = f"""
-## [PR #101] Curator Failure
-- **Date**: {self.today}
-- **Error Type**: APITimeout Handling Error
-- **Root Cause**: Failed: DID NOT RAISE <class 'product.curator.APITimeout'> in tests/test_curator.py
-- **Fix Pattern**: Ensure custom exceptions are properly raised and caught in tests. Use `pytest.raises` context manager correctly.
-- **Tags**: #mocking, #api, #timeout
-"""
-        # Get the written content and normalize whitespace
-        written_content = handle.write.call_args[0][0]
-        self.assertEqual(
-            re.sub(r'\s+', ' ', written_content).strip(),
-            re.sub(r'\s+', ' ', expected_content).strip()
-        )
+        # Assert
+        mock_subprocess_run.assert_called_once_with(['pytest'], capture_output=True, text=True, check=False)
+        mock_repo_instance.git.merge.assert_not_called()
+        self.assertFalse(result, "Process should return False on failure")
+        print("\n✅ test_process_pr_failure_no_merge: PASSED")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
