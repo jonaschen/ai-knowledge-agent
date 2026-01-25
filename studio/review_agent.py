@@ -2,6 +2,8 @@ import os
 import subprocess
 import logging
 import sys
+import re
+from datetime import datetime
 from github import Github
 from dotenv import load_dotenv
 
@@ -61,11 +63,21 @@ class ReviewAgent:
                     else:
                         logging.warning(f"❌ Tests failed for PR #{pr.number}.")
                         
-                        # --- [NEW] Feedback Loop: Comment on GitHub ---
+                        # --- Feedback Loop: Analyze and Comment ---
                         error_log = test_result.stdout[-2000:] + "\n" + test_result.stderr[-2000:] # 取最後 2000 字避免太長
+
+                        # Analyze failure
+                        analysis = self.analyze_failure(error_log, pr.number)
+
+                        # Write history
+                        self.write_history(analysis)
+
                         comment_body = (
                             f"## ❌ Automated Review Failed\n\n"
-                            f"**ReviewAgent** ran tests and found errors. Please fix them and push a new commit.\n\n"
+                            f"**ReviewAgent** found issues in component: **{analysis.get('component', 'Unknown')}**\n"
+                            f"- **Error Type**: {analysis.get('error_type', 'Unknown')}\n"
+                            f"- **Root Cause**: {analysis.get('root_cause', 'Unknown')}\n\n"
+                            f"Please check `studio/review_history.md` for details or expand the log below.\n\n"
                             f"<details>\n<summary>Click to see Error Log</summary>\n\n"
                             f"```text\n{error_log}\n```\n"
                             f"\n</details>"
@@ -90,48 +102,6 @@ class ReviewAgent:
                 except Exception as e:
                     logging.warning(f"Cleanup failed: {e}")
 
-# --- Entry Point ---
-if __name__ == '__main__':
-    print("🔍 DEBUG: Starting Review Agent v2.0...")
-    
-    is_loaded = load_dotenv() 
-    cwd = os.getcwd()
-    
-    repo_name_str = os.getenv("GITHUB_REPOSITORY")
-    token_str = os.getenv("GITHUB_TOKEN")
-
-    if not repo_name_str or not token_str:
-        print("❌ ERROR: Missing environment variables!")
-        exit(1)
-
-    try:
-        print("🚀 DEBUG: Logging into GitHub...")
-        gh_client = Github(token_str)
-        repo = gh_client.get_repo(repo_name_str)
-        
-        print("🚀 DEBUG: Fetching open pull requests...")
-        open_prs = list(repo.get_pulls(state='open'))
-        print(f"📊 DEBUG: Found {len(open_prs)} open PRs.")
-
-        if len(open_prs) == 0:
-            print("😴 No PRs to review.")
-        else:
-            print("🚀 DEBUG: Initializing ReviewAgent...")
-            agent = ReviewAgent(repo_path=cwd, github_client=gh_client)
-            
-            print("🔥 DEBUG: Starting processing...")
-            agent.process_open_prs(open_prs)
-            print("✅ DEBUG: Process finished.")
-
-    except Exception as e:
-        print(f"❌ CRITICAL ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-
-import re
-from datetime import datetime
-
-class ReviewAgentV2:
     def analyze_failure(self, pytest_output: str, pr_id: int):
         analysis = {'pr_id': pr_id}
 
@@ -181,5 +151,49 @@ class ReviewAgentV2:
 - **Fix Pattern**: {fix_pattern}
 - **Tags**: {tags}
 """
-        with open('studio/review_history.md', 'a') as f:
+        # Append to the history file
+        history_path = os.path.join(os.path.dirname(__file__), 'review_history.md')
+        # Fallback if executing from root
+        if not os.path.exists(history_path) and os.path.exists('studio/review_history.md'):
+             history_path = 'studio/review_history.md'
+
+        with open(history_path, 'a') as f:
             f.write(log_entry)
+
+# --- Entry Point ---
+if __name__ == '__main__':
+    print("🔍 DEBUG: Starting Review Agent v2.0...")
+
+    is_loaded = load_dotenv()
+    cwd = os.getcwd()
+
+    repo_name_str = os.getenv("GITHUB_REPOSITORY")
+    token_str = os.getenv("GITHUB_TOKEN")
+
+    if not repo_name_str or not token_str:
+        print("❌ ERROR: Missing environment variables!")
+        exit(1)
+
+    try:
+        print("🚀 DEBUG: Logging into GitHub...")
+        gh_client = Github(token_str)
+        repo = gh_client.get_repo(repo_name_str)
+
+        print("🚀 DEBUG: Fetching open pull requests...")
+        open_prs = list(repo.get_pulls(state='open'))
+        print(f"📊 DEBUG: Found {len(open_prs)} open PRs.")
+
+        if len(open_prs) == 0:
+            print("😴 No PRs to review.")
+        else:
+            print("🚀 DEBUG: Initializing ReviewAgent...")
+            agent = ReviewAgent(repo_path=cwd, github_client=gh_client)
+
+            print("🔥 DEBUG: Starting processing...")
+            agent.process_open_prs(open_prs)
+            print("✅ DEBUG: Process finished.")
+
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
