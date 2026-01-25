@@ -3,197 +3,110 @@ import subprocess
 import logging
 import sys
 import re
+import json
 from datetime import datetime
-from github import Github
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-class ReviewAgent:
-    def __init__(self, repo_path: str, github_client):
-        self.repo_path = repo_path
-        self.github_client = github_client
+def run_command(command: list) -> (int, str, str):
+    """Runs a command and returns its exit code, stdout, and stderr."""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        return result.returncode, result.stdout, result.stderr
+    except FileNotFoundError as e:
+        return 1, "", f"Command not found: {e}"
+    except Exception as e:
+        return 1, "", f"An unexpected error occurred: {e}"
 
-    def process_open_prs(self, open_prs):
-        """
-        Processes a list of PRs, runs tests, merges if pass, COMMENTS if fail.
-        """
+def get_open_prs():
+    """Fetches and sorts open pull requests by creation date (FIFO)."""
+    command = ['gh', 'pr', 'list', '--json', 'number,headRefName,createdAt']
+    returncode, stdout, stderr = run_command(command)
+    if returncode != 0:
+        logging.error(f"Failed to get open PRs: {stderr}")
+        return []
+
+    try:
+        prs = json.loads(stdout)
+    except json.JSONDecodeError:
+        logging.error(f"Failed to decode JSON from gh command: {stdout}")
+        return []
+
+    # Sort PRs by 'createdAt' field in ascending order
+    return sorted(prs, key=lambda pr: datetime.fromisoformat(pr['createdAt'].replace("Z", "+00:00")))
+
+class ReviewAgent:
+    def run(self):
+        """Main processing loop for the review agent."""
+        open_prs = get_open_prs()
         if not open_prs:
             logging.info("No open pull requests found.")
             return
 
         for pr in open_prs:
-            logging.info(f"Processing PR #{pr.number}: '{pr.title}'")
-            local_pr_branch = f"pr-{pr.number}"
-            # 修正: 使用 pull/ID/head 確保抓到的是 PR 的最新 commit
-            fetch_ref = f"pull/{pr.number}/head:{local_pr_branch}"
+            pr_number = pr['number']
+            # Correct key for branch name from `gh pr list` JSON
+            branch_name = pr['headRefName']
+            logging.info(f"Processing PR #{pr_number}: '{branch_name}'")
 
             try:
-                try:
-                    # 1. Fetch and Checkout
-                    logging.info(f"Fetching and checking out PR #{pr.number}...")
-                    subprocess.run(['git', 'fetch', 'origin', fetch_ref], check=True, cwd=self.repo_path, capture_output=True)
-                    subprocess.run(['git', 'checkout', local_pr_branch], check=True, cwd=self.repo_path, capture_output=True)
+                # 1. Checkout PR branch
+                run_command(['git', 'fetch', 'origin'])
+                returncode, _, stderr = run_command(['git', 'checkout', branch_name])
+                if returncode != 0:
+                    logging.error(f"Failed to checkout branch {branch_name}: {stderr}")
+                    continue
 
-                    # 2. Run Tests (使用當前 Python 環境)
-                    logging.info(f"Running pytest for PR #{pr.number}...")
-                    test_result = subprocess.run(
-                        [sys.executable, '-m', 'pytest'], 
-                        capture_output=True, 
-                        text=True, 
-                        cwd=self.repo_path
-                    )
+                # 2. Run Tests
+                logging.info(f"Running pytest for PR #{pr_number}...")
+                test_returncode, test_stdout, test_stderr = run_command(['pytest'])
 
-                    # 3. Handle Result
-                    if test_result.returncode == 0:
-                        logging.info(f"✅ Tests passed for PR #{pr.number}.")
-                        # Double check if PR is mergeable (not draft)
-                        if pr.draft:
-                            logging.warning(f"PR #{pr.number} is a Draft. Cannot merge automatically.")
-                            # Optional: Comment "Ready for review?"
-                        else:
-                            logging.info(f"Merging PR #{pr.number}...")
-                            pr.merge(merge_method='squash')
-                            logging.info(f"🚀 Successfully merged PR #{pr.number}.")
-                    
-                    else:
-                        logging.warning(f"❌ Tests failed for PR #{pr.number}.")
-                        
-                        # --- Feedback Loop: Analyze and Comment ---
-                        error_log = test_result.stdout[-2000:] + "\n" + test_result.stderr[-2000:] # 取最後 2000 字避免太長
-
-                        # Analyze failure
-                        analysis = self.analyze_failure(error_log, pr.number)
-
-                        # Write history
-                        self.write_history(analysis)
-
-                        comment_body = (
-                            f"## ❌ Automated Review Failed\n\n"
-                            f"**ReviewAgent** found issues in component: **{analysis.get('component', 'Unknown')}**\n"
-                            f"- **Error Type**: {analysis.get('error_type', 'Unknown')}\n"
-                            f"- **Root Cause**: {analysis.get('root_cause', 'Unknown')}\n\n"
-                            f"Please check `studio/review_history.md` for details or expand the log below.\n\n"
-                            f"<details>\n<summary>Click to see Error Log</summary>\n\n"
-                            f"```text\n{error_log}\n```\n"
-                            f"\n</details>"
-                        )
-                        
-                        # 檢查是否已經留言過同樣的錯誤 (避免洗版) - 這裡做簡單處理，直接留言
-                        logging.info(f"Posting error report to PR #{pr.number}...")
-                        pr.create_issue_comment(comment_body)
-                        # ---------------------------------------------
-
-                except subprocess.CalledProcessError as e:
-                    logging.error(f"Git command failed for PR #{pr.number}: {e}")
-                except Exception as e:
-                    logging.error(f"An unexpected error occurred: {e}")
+                if test_returncode == 0:
+                    logging.info(f"✅ Tests passed for PR #{pr_number}.")
+                    self.handle_test_success(branch_name)
+                else:
+                    logging.warning(f"❌ Tests failed for PR #{pr_number}.")
+                    failure_output = test_stdout + "\n" + test_stderr
+                    self.handle_test_failure(pr_number, branch_name, failure_output)
 
             finally:
                 # 4. Cleanup: Always switch back to main
-                try:
-                    subprocess.run(['git', 'checkout', 'main'], check=True, cwd=self.repo_path, capture_output=True)
-                    # Optional: Delete the temp branch to keep local clean
-                    subprocess.run(['git', 'branch', '-D', local_pr_branch], check=False, cwd=self.repo_path, capture_output=True)
-                except Exception as e:
-                    logging.warning(f"Cleanup failed: {e}")
+                run_command(['git', 'checkout', 'main'])
 
-    def analyze_failure(self, pytest_output: str, pr_id: int):
-        analysis = {'pr_id': pr_id}
+    def handle_test_success(self, branch_name: str):
+        """Handles the git workflow for a successful test run."""
+        logging.info(f"Merging branch '{branch_name}' into main.")
+        run_command(['git', 'checkout', 'main'])
+        run_command(['git', 'merge', '--no-ff', branch_name])
+        run_command(['git', 'push', 'origin', 'main'])
 
-        # 1. Extract Component from the failing test file path
-        component_match = re.search(r'tests/test_(.*?)\.py', pytest_output)
-        if component_match:
-            analysis['component'] = component_match.group(1).capitalize()
-        else:
-            analysis['component'] = 'Unknown'
-
-        # 2. Extract Root Cause from the line starting with 'E'
-        root_cause = "Could not determine root cause"
-        error_line_match = re.search(r"^E\s+(.*)$", pytest_output, re.MULTILINE)
+    def handle_test_failure(self, pr_number: int, branch_name: str, failure_output: str):
+        """Handles the git workflow for a failed test run."""
+        # 1. Construct failure message
+        today = datetime.now().strftime("%Y-%m-%d")
+        root_cause = "Could not determine root cause from output."
+        # A more robust regex to find the 'E' line, even with leading whitespace
+        error_line_match = re.search(r"^\s*E\s+(.*)$", failure_output, re.MULTILINE)
         if error_line_match:
             root_cause = error_line_match.group(1).strip()
 
-            # Append file context if available
-            file_context_match = re.search(r"^(tests/test_.*\.py):\d+: ", pytest_output, re.MULTILINE)
-            if file_context_match:
-                root_cause += f" in {file_context_match.group(1)}"
-        analysis['root_cause'] = root_cause
-
-        # 3. Determine Error Type (currently rule-based)
-        error_type = 'Generic Test Failure'
-        if 'DID NOT RAISE' in root_cause and 'APITimeout' in root_cause:
-            error_type = 'APITimeout Handling Error'
-        analysis['error_type'] = error_type
-
-        return analysis
-
-    def write_history(self, analysis: dict):
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        # Ensure required keys exist to prevent errors, providing default values
-        component = analysis.get('component', 'Unknown Component')
-        error_type = analysis.get('error_type', 'Undefined Error')
-        root_cause = analysis.get('root_cause', 'No root cause specified.')
-        fix_pattern = analysis.get('fix_pattern', 'No fix pattern provided.')
-        tags = analysis.get('tags', '#untagged')
-        pr_id = analysis.get('pr_id', 'N/A')
-
         log_entry = f"""
-## [PR #{pr_id}] {component} Failure
+## [PR #{pr_number}] Test Failure
 - **Date**: {today}
-- **Error Type**: {error_type}
 - **Root Cause**: {root_cause}
-- **Fix Pattern**: {fix_pattern}
-- **Tags**: {tags}
 """
-        # Append to the history file
-        history_path = os.path.join(os.path.dirname(__file__), 'review_history.md')
-        # Fallback if executing from root
-        if not os.path.exists(history_path) and os.path.exists('studio/review_history.md'):
-             history_path = 'studio/review_history.md'
-
-        with open(history_path, 'a') as f:
+        # 2. Append to review_history.md
+        with open('studio/review_history.md', 'a') as f:
             f.write(log_entry)
 
-# --- Entry Point ---
+        # 3. Commit and push the history file
+        run_command(['git', 'add', 'studio/review_history.md'])
+        commit_message = f"docs: Log test failure for PR #{pr_number}"
+        run_command(['git', 'commit', '-m', commit_message])
+        run_command(['git', 'push', 'origin', branch_name])
+
 if __name__ == '__main__':
-    print("🔍 DEBUG: Starting Review Agent v2.0...")
-
-    is_loaded = load_dotenv()
-    cwd = os.getcwd()
-
-    repo_name_str = os.getenv("GITHUB_REPOSITORY")
-    token_str = os.getenv("GITHUB_TOKEN")
-
-    if not repo_name_str or not token_str:
-        print("❌ ERROR: Missing environment variables!")
-        exit(1)
-
-    try:
-        print("🚀 DEBUG: Logging into GitHub...")
-        gh_client = Github(token_str)
-        repo = gh_client.get_repo(repo_name_str)
-
-        print("🚀 DEBUG: Fetching open pull requests...")
-        open_prs = list(repo.get_pulls(state='open'))
-        print(f"📊 DEBUG: Found {len(open_prs)} open PRs.")
-
-        if len(open_prs) == 0:
-            print("😴 No PRs to review.")
-        else:
-            print("🚀 DEBUG: Initializing ReviewAgent...")
-            agent = ReviewAgent(repo_path=cwd, github_client=gh_client)
-
-            print("🔥 DEBUG: Starting processing...")
-            agent.process_open_prs(open_prs)
-            print("✅ DEBUG: Process finished.")
-
-    except Exception as e:
-        print(f"❌ CRITICAL ERROR: {e}")
-        import traceback
-        traceback.print_exc()
+    # This check ensures the agent runs only when the script is executed directly
+    agent = ReviewAgent()
+    agent.run()
