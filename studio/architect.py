@@ -41,6 +41,17 @@ class Architect:
             print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
             self.constitution = "Focus on reliability and modularity."
 
+        # ADD THIS: Load rules and history
+        self.rules = self._load_memory_file('studio/rules.md')
+        self.history = self._load_memory_file('studio/review_history.md')
+
+    def _load_memory_file(self, file_path):
+        """Safely loads a file's content, returning empty string if not found."""
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                return f.read()
+        return ""
+
     def plan_feature(self, user_request: str) -> str:
         """
         核心邏輯：將需求轉化為 Issue
@@ -53,6 +64,10 @@ class Architect:
         
         === YOUR CONSTITUTION (AGENTS.md) ===
         {constitution}
+        === DESIGN PATTERNS (MUST FOLLOW) ===
+        {rules}
+        === RECENT FAILURES (AVOID THESE) ===
+        {history}
         =====================================
         
         === TDD MANDATE ===
@@ -90,6 +105,8 @@ class Architect:
         
         return chain.invoke({
             "constitution": self.constitution,
+            "rules": self.rules,
+            "history": self.history,
             "request": user_request
         })
 
