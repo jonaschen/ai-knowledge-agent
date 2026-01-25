@@ -127,3 +127,59 @@ if __name__ == '__main__':
         print(f"❌ CRITICAL ERROR: {e}")
         import traceback
         traceback.print_exc()
+
+import re
+from datetime import datetime
+
+class ReviewAgentV2:
+    def analyze_failure(self, pytest_output: str, pr_id: int):
+        analysis = {'pr_id': pr_id}
+
+        # 1. Extract Component from the failing test file path
+        component_match = re.search(r'tests/test_(.*?)\.py', pytest_output)
+        if component_match:
+            analysis['component'] = component_match.group(1).capitalize()
+        else:
+            analysis['component'] = 'Unknown'
+
+        # 2. Extract Root Cause from the line starting with 'E'
+        root_cause = "Could not determine root cause"
+        error_line_match = re.search(r"^E\s+(.*)$", pytest_output, re.MULTILINE)
+        if error_line_match:
+            root_cause = error_line_match.group(1).strip()
+
+            # Append file context if available
+            file_context_match = re.search(r"^(tests/test_.*\.py):\d+: ", pytest_output, re.MULTILINE)
+            if file_context_match:
+                root_cause += f" in {file_context_match.group(1)}"
+        analysis['root_cause'] = root_cause
+
+        # 3. Determine Error Type (currently rule-based)
+        error_type = 'Generic Test Failure'
+        if 'DID NOT RAISE' in root_cause and 'APITimeout' in root_cause:
+            error_type = 'APITimeout Handling Error'
+        analysis['error_type'] = error_type
+
+        return analysis
+
+    def write_history(self, analysis: dict):
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # Ensure required keys exist to prevent errors, providing default values
+        component = analysis.get('component', 'Unknown Component')
+        error_type = analysis.get('error_type', 'Undefined Error')
+        root_cause = analysis.get('root_cause', 'No root cause specified.')
+        fix_pattern = analysis.get('fix_pattern', 'No fix pattern provided.')
+        tags = analysis.get('tags', '#untagged')
+        pr_id = analysis.get('pr_id', 'N/A')
+
+        log_entry = f"""
+## [PR #{pr_id}] {component} Failure
+- **Date**: {today}
+- **Error Type**: {error_type}
+- **Root Cause**: {root_cause}
+- **Fix Pattern**: {fix_pattern}
+- **Tags**: {tags}
+"""
+        with open('studio/review_history.md', 'a') as f:
+            f.write(log_entry)
