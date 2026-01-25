@@ -72,6 +72,27 @@ class ReviewAgent:
                         # Write history
                         self.write_history(analysis)
 
+                        # Commit and Push
+                        try:
+                            logging.info(f"Committing review_history.md to PR #{pr.number}...")
+                            # Add the file
+                            subprocess.run(['git', 'add', 'studio/review_history.md'], check=True, cwd=self.repo_path, capture_output=True)
+
+                            # Commit
+                            commit_msg = f"docs: update review history for PR #{pr.number} failure [skip ci]"
+                            subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=self.repo_path, capture_output=True)
+
+                            # Push
+                            # Push local_pr_branch to origin pr.head.ref
+                            push_ref = f"{local_pr_branch}:{pr.head.ref}"
+                            logging.info(f"Pushing to origin {push_ref}...")
+                            subprocess.run(['git', 'push', 'origin', push_ref], check=True, cwd=self.repo_path, capture_output=True)
+
+                        except subprocess.CalledProcessError as e:
+                            logging.error(f"Failed to commit/push history for PR #{pr.number}: {e}")
+                            if e.stderr:
+                                logging.error(f"Git stderr: {e.stderr.decode()}")
+
                         comment_body = (
                             f"## ❌ Automated Review Failed\n\n"
                             f"**ReviewAgent** found issues in component: **{analysis.get('component', 'Unknown')}**\n"
@@ -152,10 +173,10 @@ class ReviewAgent:
 - **Tags**: {tags}
 """
         # Append to the history file
-        history_path = os.path.join(os.path.dirname(__file__), 'review_history.md')
-        # Fallback if executing from root
-        if not os.path.exists(history_path) and os.path.exists('studio/review_history.md'):
-             history_path = 'studio/review_history.md'
+        history_path = os.path.join(self.repo_path, 'studio', 'review_history.md')
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(history_path), exist_ok=True)
 
         with open(history_path, 'a') as f:
             f.write(log_entry)
@@ -180,7 +201,7 @@ if __name__ == '__main__':
         repo = gh_client.get_repo(repo_name_str)
 
         print("🚀 DEBUG: Fetching open pull requests...")
-        open_prs = list(repo.get_pulls(state='open'))
+        open_prs = list(repo.get_pulls(state='open', sort='created', direction='asc'))
         print(f"📊 DEBUG: Found {len(open_prs)} open PRs.")
 
         if len(open_prs) == 0:
