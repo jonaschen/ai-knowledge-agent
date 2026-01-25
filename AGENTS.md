@@ -1,6 +1,6 @@
-AI Software Studio Constitution (v2.3)
+# AI Software Studio Constitution (v2.3)
 
-1. Core Philosophy: Evidentialism & Automation
+## 1. Core Philosophy: Evidentialism & Automation
 
 Objective: Build a self-evolving "Deep Context Reader" system.
 
@@ -12,10 +12,11 @@ Principle 3: TDD. Red-Green-Refactor is mandatory for all code changes.
 
 ---\
 
-2. Official Directory Structure (The Territory)
+## 2. Official Directory Structure (The Territory)
 
 All agents MUST respect this structure. DO NOT delete files listed here unless explicitly instructed.
 
+```text
 /
 ├── product/                <-- [Production Line] The core content generation system
 │   ├── main.py             # Entry point & Orchestrator
@@ -37,9 +38,9 @@ All agents MUST respect this structure. DO NOT delete files listed here unless e
 │   ├── test_analyst.py
 │   └── ...
 └── AGENTS.md               # [The Constitution] Single Source of Truth
+```
 
-
-3. Agent Responsibilities
+## 3. Agent Responsibilities
 
 Studio Agents (Internal Tools)
 
@@ -59,7 +60,7 @@ Analyst: Synthesizes book content + researcher notes into a recursive thematic t
 
 Broadcaster: Converts the tree into a structured dialogue script.
 
-4. Coding Standards
+## 4. Coding Standards
 
 Imports: Use absolute imports where possible (e.g., from product.researcher import Researcher).
 
@@ -67,7 +68,7 @@ Error Handling: Never crash on API limits. Implement fallbacks (e.g., Google -> 
 
 Testing: All PRs must include a test file in tests/.
 
-5. Knowledge Management & Continuous Learning (The Memory)
+## 5. Knowledge Management & Continuous Learning (The Memory)
 
 To prevent repetitive mistakes and "Agentic Loops", all agents must adhere to the following memory protocols:
 
@@ -75,13 +76,14 @@ Structured Logging (Mandatory)
 
 All entries in studio/review_history.md MUST follow this format to ensure machine readability:
 
+```text
 ## [PR #<ID>] <Component> Failure
 - **Date**: YYYY-MM-DD
 - **Error Type**: <e.g., PydanticValidationError, APITimeout>
 - **Root Cause**: <Brief description>
 - **Fix Pattern**: <Actionable instruction for future>
 - **Tags**: #mocking, #pydantic, #api
-
+```
 
 Context Window Management (Archival Protocol)
 
@@ -103,7 +105,7 @@ Jules (Developer): Before writing any code, you MUST read studio/rules.md (for b
 
 ---\
 
-6. The Copilot Protocol (Model Diversity & Enforcement)
+## 6. The Copilot Protocol (Model Diversity & Enforcement)
 
 Core Principle: Use heterogeneous models (Gemini + Copilot) to reduce hallucinations. This process is NON-NEGOTIABLE.
 
@@ -139,8 +141,9 @@ Documentation Format
 
 Every Pull Request MUST include the following section. If missing, ReviewAgent will reject the PR.
 
+```text
 ## 🤖 Copilot Consultation Log
 - **Target Function**: `<name of function refactored>`
 - **Copilot Advice**: `<Summary, e.g., 'Suggested using itertools'>`
 - **Result**: `<Applied | Rejected | Aborted due to Circuit Breaker>`
-
+```
