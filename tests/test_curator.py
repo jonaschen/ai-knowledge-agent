@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 import os
+import pytest
+from unittest.mock import Mock
 
 # Set environment variables to avoid defaults that might cause issues (though defaults seem harmless for instantiation)
 os.environ["PROJECT_ID"] = "test-project"
@@ -10,7 +12,7 @@ os.environ["TAVILY_API_KEY"] = "TAVILY_API_KEY"
 # Mock ChatVertexAI before importing curator
 with patch('langchain_google_vertexai.ChatVertexAI') as MockChatVertexAI:
     from product import curator
-    from product.curator import Curator
+    from product.curator import Curator, BookSource, AllSourcesFailedError
 from langchain_core.messages import HumanMessage
 
 class TestCurator(unittest.TestCase):
@@ -136,36 +138,56 @@ class TestCurator(unittest.TestCase):
         # Assert
         self.assertEqual(result, expected_dict, "The method failed to strip Markdown and parse the JSON correctly.")
 
-    @patch('product.curator.Curator._search_google_books')
-    @patch('product.curator.TavilyClient')
-    def test_curator_uses_tavily_on_google_books_failure(self, mock_tavily_client, mock_google_api):
-        """
-        GIVEN a Curator instance
-        WHEN the primary Google Books search fails (e.g., raises an exception)
-        THEN the system must fall back to using the TavilyClient for the search.
-        """
-        # Arrange: Simulate Google Books API failure
-        mock_google_api.side_effect = Exception("API Limit Reached")
+# Mock BookSource implementations for testing
+class MockSuccessfulSource(BookSource):
+    def search(self, query: str) -> list[dict]:
+        return [{"title": f"Book from {self.__class__.__name__}"}]
 
-        # Arrange: Mock the Tavily client and its search method
-        mock_tavily_instance = MagicMock()
-        mock_tavily_instance.search.return_value = {"results": [{"title": "Fallback Book"}]}
-        mock_tavily_client.return_value = mock_tavily_instance
+class MockFailingSource(BookSource):
+    def search(self, query: str) -> list[dict]:
+        raise ConnectionError("API is down")
 
-        # Act
-        curator_instance = Curator()
-        results = curator_instance.search("some query")
+def test_curator_uses_primary_source_on_success():
+    """
+    Given a primary source that succeeds,
+    When the curator selects books,
+    Then it should return results from that primary source.
+    """
+    primary_source = MockSuccessfulSource()
+    fallback_source = MockSuccessfulSource()
 
-        # Assert: Verify that _search_google_books was called and failed
-        mock_google_api.assert_called_once()
+    # Spy on the fallback source's search method
+    fallback_source.search = Mock(wraps=fallback_source.search)
 
-        # Assert: Verify that TavilyClient was initialized and its search method was called
-        mock_tavily_client.assert_called_once_with(api_key="TAVILY_API_KEY")
-        mock_tavily_instance.search.assert_called_once_with(query="best books on some query", search_depth="basic")
+    curator = Curator(sources=[primary_source, fallback_source])
+    results = curator.select_books("test query")
 
-        # Assert: Verify that the fallback results are returned
-        self.assertEqual(results, [{"title": "Fallback Book", "authors": ["N/A"], "description": None}])
+    assert results == [{"title": "Book from MockSuccessfulSource"}]
+    # Verify the fallback was NOT called
+    fallback_source.search.assert_not_called()
 
+def test_curator_uses_fallback_source_on_primary_failure():
+    """
+    Given a primary source that fails,
+    When the curator selects books,
+    Then it should return results from the fallback source.
+    """
+    primary_source = MockFailingSource()
+    fallback_source = MockSuccessfulSource()
 
-if __name__ == '__main__':
-    unittest.main()
+    curator = Curator(sources=[primary_source, fallback_source])
+    results = curator.select_books("test query")
+
+    assert results == [{"title": "Book from MockSuccessfulSource"}]
+
+def test_curator_raises_error_when_all_sources_fail():
+    """
+    Given all sources fail,
+    When the curator selects books,
+    Then it should raise a specific AllSourcesFailedError.
+    """
+    sources = [MockFailingSource(), MockFailingSource()]
+    curator = Curator(sources=sources)
+
+    with pytest.raises(AllSourcesFailedError, match="All book sources failed for query: test query"):
+        curator.select_books("test query")

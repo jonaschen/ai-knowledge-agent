@@ -9,6 +9,7 @@ from tavily import TavilyClient
 from langgraph.graph import StateGraph, END
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage
+from abc import ABC, abstractmethod
 
 load_dotenv()
 
@@ -24,75 +25,107 @@ llm = ChatVertexAI(
     max_output_tokens=1024
 )
 
-class Curator:
-    def __init__(self):
-        self.tavily_api_key = os.getenv("TAVILY_API_KEY")
+# Custom Exception for clarity
+class AllSourcesFailedError(Exception):
+    pass
 
-    def _adapt_tavily_results(self, results: dict) -> list:
-        """Adapts Tavily search results to our standard book format."""
-        adapted_books = []
-        if "results" in results:
-            for item in results["results"]:
-                adapted_books.append({
-                    "title": item.get("title"),
-                    "authors": ["N/A"],
-                    "description": item.get("content"),
-                })
-        return adapted_books
+# 1. The Abstraction (Interface)
+class BookSource(ABC):
+    @abstractmethod
+    def search(self, query: str) -> list[dict]:
+        """Searches for books and returns a list of titles or identifiers."""
+        pass
 
-    def _fallback_to_tavily(self, query: str) -> list:
-        """Initializes Tavily client, performs search, and adapts results."""
-        client = TavilyClient(api_key=self.tavily_api_key)
-        tavily_results = client.search(query=f"best books on {query}", search_depth="basic")
-        return self._adapt_tavily_results(tavily_results)
+# 2. Concrete Implementations
+class GoogleBooksSource(BookSource):
+    def __init__(self, max_results: int = 20):
+        self.max_results = max_results
 
-    def _search_google_books(self, query: str, max_results=20):
-        """從 Google Books 獲取候選書籍"""
-        print(f"--- 正在搜索 Google Books: {query} ---")
+    def search(self, query: str) -> list[dict]:
+        """Searches Google Books for candidate books."""
+        print(f"--- Searching Google Books: {query} ---")
         url = "https://www.googleapis.com/books/v1/volumes"
         params = {
             "q": query,
-            "langRestrict": "en", # 英文書通常技術含量較高
+            "langRestrict": "en",
             "orderBy": "relevance",
-            "maxResults": max_results
+            "maxResults": self.max_results
         }
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
-
-        resp = requests.get(url, params=params, headers=headers)
-        resp.raise_for_status() # Will raise an HTTPError for bad responses (4xx or 5xx)
-
-        data = resp.json()
-
-        books = []
-        if "items" in data:
-            for item in data["items"]:
-                info = item.get("volumeInfo", {})
-                books.append({
-                    "title": info.get("title"),
-                    "authors": info.get("authors", []),
-                    "publisher": info.get("publisher", "Unknown Publisher"),
-                    "publishedDate": info.get("publishedDate", "Unknown Date"),
-                    "description": info.get("description", ""),
-                    "rating": info.get("averageRating", 0),
-                    "ratingsCount": info.get("ratingsCount", 0)
-                })
-        else:
-            logging.warning(f"Google Books API Response (No items): {data}")
-        return books
-
-    def search(self, query: str):
-        """
-        Searches for a book, first using Google Books and falling back to Tavily.
-        """
         try:
-            print("Attempting search with primary API (Google Books)...")
-            return self._search_google_books(query)
-        except Exception as e:
-            print(f"Primary API failed: {e}. Falling back to Tavily.")
-            return self._fallback_to_tavily(query)
+            resp = requests.get(url, params=params, headers=headers)
+            resp.raise_for_status()  # Will raise an HTTPError for bad responses
 
+            data = resp.json()
+
+            books = []
+            if "items" in data:
+                for item in data["items"]:
+                    info = item.get("volumeInfo", {})
+                    books.append({
+                        "title": info.get("title"),
+                        "authors": info.get("authors", []),
+                        "publisher": info.get("publisher", "Unknown Publisher"),
+                        "publishedDate": info.get("publishedDate", "Unknown Date"),
+                        "description": info.get("description", ""),
+                        "rating": info.get("averageRating", 0),
+                        "ratingsCount": info.get("ratingsCount", 0)
+                    })
+            else:
+                logging.warning(f"Google Books API Response (No items): {data}")
+            return books
+        except Exception as e:
+            logging.warning(f"Google Books API failed: {e}")
+            raise  # Re-raise to signal failure to the Curator
+
+
+class TavilySource(BookSource):
+    def __init__(self):
+        self.tavily_api_key = os.getenv("TAVILY_API_KEY")
+
+    def search(self, query: str) -> list[dict]:
+        """Uses Tavily to find books as a fallback."""
+        try:
+            print(f"--- Searching Tavily: {query} ---")
+            client = TavilyClient(api_key=self.tavily_api_key)
+            tavily_results = client.search(query=f"best books on {query}", search_depth="basic")
+
+            adapted_books = []
+            if "results" in tavily_results:
+                for item in tavily_results["results"]:
+                    adapted_books.append({
+                        "title": item.get("title"),
+                        "authors": ["N/A"],
+                        "description": item.get("content"),
+                    })
+            return adapted_books
+        except Exception as e:
+            logging.warning(f"Tavily API failed: {e}")
+            raise  # Re-raise to signal failure to the Curator
+
+# 3. The Refactored Orchestrator
+class Curator:
+    def __init__(self, sources: list[BookSource]):
+        if not sources:
+            raise ValueError("Curator must be initialized with at least one BookSource.")
+        self.sources = sources
+
+    def select_books(self, query: str) -> list[dict]:
+        """
+        Selects books by trying each source in order until one succeeds.
+        """
+        for source in self.sources:
+            try:
+                results = source.search(query)
+                if results:
+                    return results
+            except Exception as e:
+                logging.error(f"Source {source.__class__.__name__} failed for query '{query}'. Error: {e}")
+
+        # If the loop completes without returning, all sources have failed.
+        raise AllSourcesFailedError(f"All book sources failed for query: {query}")
 
 # --- 1. 定義狀態 ---
 class CuratorState(TypedDict):
@@ -191,8 +224,12 @@ def search_node(state: CuratorState):
         query = f"{topic} book" 
     
     print(f"--- 調整後的搜尋 Query: {query} ---")
-    curator = Curator()
-    candidates = curator.search(query)
+
+    primary_source = GoogleBooksSource()
+    fallback_source = TavilySource()
+    curator = Curator(sources=[primary_source, fallback_source])
+
+    candidates = curator.select_books(query)
     return {"raw_candidates": candidates}
 
 def validation_node(state: CuratorState):
