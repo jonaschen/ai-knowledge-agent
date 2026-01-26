@@ -39,12 +39,15 @@ def git_repo(tmp_path):
 
     return repo_path
 
-def test_process_open_prs_updates_history_on_failure(git_repo):
+def test_process_open_prs_updates_history_on_failure(git_repo, monkeypatch):
     """
     Verifies that when a PR fails tests:
     1. review_history.md is updated in the PR branch.
     2. The update is committed and pushed to the PR branch.
     """
+    # Ensure history writing is enabled
+    monkeypatch.setenv("UPDATE_REVIEW_HISTORY", "true")
+
     # Arrange: Create a failing feature branch
     run_git_command("git checkout -b feature/fail", git_repo)
     (git_repo / "tests/test_fail.py").write_text("def test_fail(): assert False")

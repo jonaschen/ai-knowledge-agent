@@ -53,9 +53,10 @@ class TestReviewAgent(unittest.TestCase):
         self.assertIn("tests/test_curator.py", analysis['root_cause'])
 
     @patch("builtins.open", new_callable=mock_open)
+    @patch("os.makedirs")
     @patch("os.path.exists")
     @patch.dict(os.environ, {"UPDATE_REVIEW_HISTORY": "true"})
-    def test_write_history(self, mock_exists, mock_file):
+    def test_write_history(self, mock_exists, mock_makedirs, mock_file):
         """
         Tests if the agent formats and appends the failure log correctly.
         """
