@@ -39,6 +39,7 @@ def git_repo(tmp_path):
 
     return repo_path
 
+@pytest.mark.skip(reason="Skipping test for removed feature: review_history.md update functionality was removed during SOLID refactoring.")
 def test_process_open_prs_updates_history_on_failure(git_repo):
     """
     Verifies that when a PR fails tests:
