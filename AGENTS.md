@@ -2,15 +2,15 @@
 
 ## 1. Core Philosophy: Evidentialism & Automation
 
-Objective: Build a self-evolving "Deep Context Reader" system.
+**Objective:** Build a self-evolving "Deep Context Reader" system.
 
-Principle 1: Evidentialism. No hallucinations. All claims must be backed by Researcher findings.
+**Principle 1:** Evidentialism. No hallucinations. All claims must be backed by Researcher findings.
 
-Principle 2: Automation. The studio/ layer manages the product/ layer.
+**Principle 2:** Automation. The studio/ layer manages the product/ layer.
 
-Principle 3: TDD. Red-Green-Refactor is mandatory for all code changes.
+**Principle 3:** TDD. Red-Green-Refactor is mandatory for all code changes.
 
----\
+---
 
 ## 2. Official Directory Structure (The Territory)
 
@@ -42,37 +42,37 @@ All agents MUST respect this structure. DO NOT delete files listed here unless e
 
 ## 3. Agent Responsibilities
 
-Studio Agents (Internal Tools)
+### Studio Agents (Internal Tools)
 
-Architect: Reads this file. Plans features. Enforces TDD.
+* **Architect:** Reads this file. Plans features. Enforces TDD.
 
-ReviewAgent: Monitors PRs. Runs pytest. Merges ONLY if green.
+* **ReviewAgent:** Monitors PRs. Runs pytest. Merges ONLY if green.
 
-ProductManager (PM): High-level planner. Generates execution plans JSON.
+* **ProductManager (PM):** High-level planner. Generates execution plans JSON.
 
-Product Agents (The Application)
+### Product Agents (The Application)
 
-Curator: Fetches books via Google Books. Falls back to Tavily on 429 errors.
+* **Curator:** Fetches books via Google Books. Falls back to Tavily on 429 errors.
 
-Researcher: Searches the web for "deep reviews" and "counter-arguments".
+* **Researcher:** Searches the web for "deep reviews" and "counter-arguments".
 
-Analyst: Synthesizes book content + researcher notes into a recursive thematic tree.
+* **Analyst:** Synthesizes book content + researcher notes into a recursive thematic tree.
 
-Broadcaster: Converts the tree into a structured dialogue script.
+* **Broadcaster:** Converts the tree into a structured dialogue script.
 
 ## 4. Coding Standards
 
-Imports: Use absolute imports where possible (e.g., from product.researcher import Researcher).
+* **Imports:** Use absolute imports where possible (e.g., from product.researcher import Researcher).
 
-Error Handling: Never crash on API limits. Implement fallbacks (e.g., Google -> Tavily).
+* **Error Handling:** Never crash on API limits. Implement fallbacks (e.g., Google -> Tavily).
 
-Testing: All PRs must include a test file in tests/.
+* **Testing:** All PRs must include a test file in tests/.
 
 ## 5. Knowledge Management & Continuous Learning (The Memory)
 
 To prevent repetitive mistakes and "Agentic Loops", all agents must adhere to the following memory protocols:
 
-Structured Logging (Mandatory)
+### Structured Logging (Mandatory)
 
 All entries in studio/review_history.md MUST follow this format to ensure machine readability:
 
@@ -85,59 +85,61 @@ All entries in studio/review_history.md MUST follow this format to ensure machin
 - **Tags**: #mocking, #pydantic, #api
 ```
 
-Context Window Management (Archival Protocol)
+### Context Window Management (Archival Protocol)
 
-Trigger: When studio/review_history.md exceeds 500 lines.
+**Trigger:** When studio/review_history.md exceeds 500 lines.
 
-Action (Architect):
+**Action (Architect):**
 
-Summarize: Extract universal "Fix Patterns" and add them to studio/rules.md.
+* **Summarize:** Extract universal "Fix Patterns" and add them to studio/rules.md.
 
-Archive: Move the detailed logs to studio/archive/review_history_YYYY_MM.md.
+* **Archive:** Move the detailed logs to studio/archive/review_history_YYYY_MM.md.
 
-Reset: Clear studio/review_history.md to keep it lightweight.
+* **Reset:** Clear studio/review_history.md to keep it lightweight.
 
-Failure is Knowledge
+
+### Failure is Knowledge
 
 If a PR is closed or code is reverted, the lesson learned must be preserved in review_history.md.
 
 Jules (Developer): Before writing any code, you MUST read studio/rules.md (for best practices) and studio/review_history.md (for recent pitfalls).
 
----\
+---
 
 ## 6. The Copilot Protocol (Model Diversity & Enforcement)
 
-Core Principle: Use heterogeneous models (Gemini + Copilot) to reduce hallucinations. This process is NON-NEGOTIABLE.
+**Core Principle:** Use heterogeneous models (Gemini + Copilot) to reduce hallucinations. This process is NON-NEGOTIABLE.
 
-Workflow: The "Double Check" Mechanism
+**Workflow:** The "Double Check" Mechanism
 
-Develop (Gemini): Jules writes the code and ensures tests pass (Green state).
+* **Develop (Gemini):** Jules writes the code and ensures tests pass (Green state).
 
-Consult (Copilot): Before committing, Jules MUST invoke the GitHub Copilot CLI.
+* **Consult (Copilot):** Before committing, Jules MUST invoke the GitHub Copilot CLI.
 
-Command: gh copilot suggest "Review this code for optimization and security: [paste code snippet]"
+* **Command:** gh copilot suggest "Review this code for optimization and security: [paste code snippet]"
 
-Action: Analyze Copilot's response.
+* **Action:** Analyze Copilot's response.
 
-If valid improvement: Apply it (Refactor).
+* * **If valid improvement:** Apply it (Refactor).
 
-If hallucination/breakage: Reject it.
+* * **If hallucination/breakage:** Reject it.
 
-Documentation (The Audit Trail): Jules MUST append a COCKPIT_CONSULTATION_LOG.md file (or section in PR description) with the consultation details.
+**Documentation (The Audit Trail):** Jules MUST append a COCKPIT_CONSULTATION_LOG.md file (or section in PR description) with the consultation details.
 
-Circuit Breaker (Anti-Loop Protocol)
+
+### Circuit Breaker (Anti-Loop Protocol)
 
 To prevent infinite loops where Copilot suggestions break the build:
 
-3-Strike Limit: If Copilot's suggestions cause tests to fail, you may attempt to fix it TWICE.
+* **3-Strike Limit:** If Copilot's suggestions cause tests to fail, you may attempt to fix it TWICE.
 
-Abort Condition: On the 3rd failure, you MUST ABORT the refactoring process.
+* **Abort Condition:** On the 3rd failure, you MUST ABORT the refactoring process.
 
-Fallback Action: Revert the code to the state at the end of Phase 2 (Green). Do not sacrifice correctness for optimization.
+* **Fallback Action:** Revert the code to the state at the end of Phase 2 (Green). Do not sacrifice correctness for optimization.
 
-Logging: Explicitly state "Aborted due to Circuit Breaker" in the log.
+* **Logging:** Explicitly state "Aborted due to Circuit Breaker" in the log.
 
-Documentation Format
+### Documentation Format
 
 Every Pull Request MUST include the following section. If missing, ReviewAgent will reject the PR.
 
