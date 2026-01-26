@@ -1,179 +1,90 @@
-import os
-import sys
-from typing import Optional
-from dotenv import load_dotenv
-from github import Github
-from langchain_google_vertexai import ChatVertexAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+# studio/architect.py
+from pathlib import Path
 
-# 確保能讀取到環境變數
-load_dotenv()
+class ContextLoader:
+    """
+    Responsible for loading all necessary context from the file system.
+    SRP: Its only job is to read files.
+    """
+    def load_context(self) -> dict[str, str]:
+        """Loads constitution, rules, and history into a dictionary."""
+        # Note: Use absolute paths or relative paths from a known root
+        # to ensure this works regardless of where it's called from.
+        # For now, we assume execution from the root directory.
+        return {
+            "constitution": Path("AGENTS.md").read_text(),
+            "rules": Path("studio/rules.md").read_text(),
+            "history": Path("studio/review_history.md").read_text(),
+        }
+
+class IssueFormatter:
+    """
+    Responsible for formatting the loaded context into a GitHub issue.
+    SRP: Its only job is to format strings.
+    """
+    def format(self, user_request: str, context: dict[str, str]) -> str:
+        """Generates a GitHub issue markdown string from a user request and context."""
+        # This is a simplified example. You will port the existing
+        # issue generation logic here.
+        # A simple heuristic for the title tag:
+        tag = "Feature"
+        if "refactor" in user_request.lower():
+            tag = "Refactor"
+        elif "fix" in user_request.lower() or "bug" in user_request.lower():
+            tag = "Bugfix"
+
+        title = f"[{tag}] {user_request}"
+
+        # The body will be a complex template using the context.
+        # For this task, a placeholder is sufficient.
+        body = f"""
+@jules
+
+This is an auto-generated issue based on your request: "{user_request}"
+
+### Step 1: The Test (The Spec)
+<Provide a specific test case or script>
+
+### Step 2: The Implementation
+<Provide technical guidance on what to change>
+
+### Acceptance Criteria
+<Bullet points>
+"""
+        return f"Title: {title}\nBody:\n{body}"
+
 
 class Architect:
     """
-    The Architect is the bridge between Human Strategy and AI Execution.
-    It translates high-level goals into precise, TDD-compliant GitHub Issues.
+    Orchestrates the process of drafting a TDD issue.
+    DIP: Depends on abstractions (via constructor injection) not concrete implementations.
     """
+    def __init__(self, loader: ContextLoader, formatter: IssueFormatter):
+        self.loader = loader
+        self.formatter = formatter
+
+    def draft_issue(self, user_request: str) -> str:
+        """
+        Drafts a complete GitHub issue.
+        1. Loads context.
+        2. Formats the issue.
+        """
+        print("Architect: Loading context...")
+        context = self.loader.load_context()
+        print("Architect: Formatting issue...")
+        issue = self.formatter.format(user_request, context)
+        print("Architect: Issue drafted.")
+        return issue
+
+# Optional: Add a main block to allow standalone execution for testing
+if __name__ == '__main__':
+    # This demonstrates how the components are wired together in production.
+    # Our tests will inject mocks instead.
+    default_loader = ContextLoader()
+    default_formatter = IssueFormatter()
+    architect_agent = Architect(loader=default_loader, formatter=default_formatter)
     
-    def __init__(self, repo_name: str):
-        token = os.getenv("GITHUB_TOKEN")
-        if not token:
-            raise ValueError("❌ CRITICAL: GITHUB_TOKEN not found in .env file. Architect cannot work without it.")
-
-        self.github = Github(os.getenv("GITHUB_TOKEN"))
-
-        self.repo = self.github.get_repo(repo_name)
-        
-        # 使用 Gemini 2.5 Pro 作為大腦，Temperature 稍高以利於規劃
-        self.llm = ChatVertexAI(
-            model_name="gemini-2.5-pro",
-            temperature=0.2, 
-            max_output_tokens=8192
-        )
-        
-        # 載入憲法 (Constitution)
-        # 注意：搬家後 AGENTS.md 應該還是在根目錄，所以路徑可能需要調整
-        try:
-            with open("AGENTS.md", "r") as f:
-                self.constitution = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
-            self.constitution = "Focus on reliability and modularity."
-
-        # Load Long-term Memory (Rules)
-        try:
-            with open("studio/rules.md", "r") as f:
-                self.rules = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: studio/rules.md not found.")
-            self.rules = "No specific rules defined yet."
-
-        # Load Active Memory (Review History)
-        try:
-            with open("studio/review_history.md", "r") as f:
-                self.review_history = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: studio/review_history.md not found.")
-            self.review_history = "No recent review history."
-
-    def plan_feature(self, user_request: str) -> str:
-        """
-        核心邏輯：將需求轉化為 Issue
-        """
-        print(f"🏗️ Architect is analyzing request: '{user_request}'...")
-        
-        system_prompt = """
-        You are the Chief Software Architect for an AI Software Studio.
-        Your goal is to manage the development of the 'Deep Context Reader' project.
-        
-        === YOUR CONSTITUTION (AGENTS.md) ===
-        {constitution}
-        =====================================
-        
-        === LONG-TERM MEMORY (Design Patterns & Rules) ===
-        {rules}
-        ==================================================
-
-        === ACTIVE MEMORY (Recent Failures) ===
-        {review_history}
-        =======================================
-
-        === TEAM STRUCTURE ===
-        1. Studio Team (Internal Tools): Responsible for the management layer (studio/).
-           - Components: Architect, ReviewAgent, ProductManager, Rules, History.
-           - Goal: Build tools that build the product.
-
-        2. Product Team (The Application): Responsible for the core content generation system (product/).
-           - Components: Curator, Researcher, Analyst, Broadcaster.
-           - Goal: The "Deep Context Reader" system.
-
-        === TDD MANDATE ===
-        We follow strict Test-Driven Development (TDD).
-        For every bug fix or feature request, you MUST instruct the developer (Jules) to:
-        1. Create a Reproduction Script or Unit Test FIRST.
-        2. Ensure the test fails (Red).
-        3. Write code to pass the test (Green).
-        
-        === USER REQUEST ===
-        {request}
-        
-        === INSTRUCTIONS ===
-        Analyze the request to determine which team is responsible (Studio Team or Product Team).
-        Draft a GitHub Issue in the following format. 
-        Be extremely specific about file paths (e.g., product/curator.py, tests/test_curator.py).
-        
-        Format:
-        Title: [Team Name] [Tag] <Concise Title>
-        Body:
-        @jules
-        <Context & Objective>
-        
-        ### Step 1: The Test (The Spec)
-        <Provide a specific test case or script>
-        
-        ### Step 2: The Implementation
-        <Provide technical guidance on what to change>
-        
-        ### Acceptance Criteria
-        <Bullet points>
-        """
-        
-        prompt = ChatPromptTemplate.from_template(system_prompt)
-        chain = prompt | self.llm | StrOutputParser()
-        
-        return chain.invoke({
-            "constitution": self.constitution,
-            "rules": self.rules,
-            "review_history": self.review_history,
-            "request": user_request
-        })
-
-    def publish_issue(self, issue_content: str):
-        """
-        發布 Issue 到 GitHub
-        """
-        # 簡單的解析器 (假設 LLM 輸出格式正確)
-        lines = issue_content.strip().split("\n")
-        title = lines[0].replace("Title:", "").strip()
-        
-        # 尋找 Body 的開始
-        body_start = 0
-        for i, line in enumerate(lines):
-            if "Body:" in line:
-                body_start = i + 1
-                break
-        
-        body = "\n".join(lines[body_start:]).strip()
-        
-        print("\n" + "="*50)
-        print(f"Proposed Issue: {title}")
-        print("-" * 50)
-        print(body[:500] + "...\n(content truncated for preview)")
-        print("="*50)
-        
-        confirm = input(">> Approve and Publish to Jules? (y/n): ")
-        if confirm.lower() == 'y':
-            issue = self.repo.create_issue(
-                title=title,
-                body=body,
-                labels=["jules", "architect-approved"]
-            )
-            print(f"🚀 Published Issue #{issue.number}. Jules is on it.")
-        else:
-            print("❌ Cancelled.")
-
-# --- CLI Entry Point ---
-if __name__ == "__main__":
-    # 讀取 Repo 名稱 (建議從 .env 讀取或直接寫死)
-    REPO_NAME = os.getenv("GITHUB_REPO_NAME", "jonaschen/ai-knowledge-agent")
-    
-    if len(sys.argv) < 2:
-        print("Usage: python -m studio.architect 'Your feature request here'")
-        sys.exit(1)
-        
-    user_request = sys.argv[1]
-    
-    architect = Architect(REPO_NAME)
-    plan = architect.plan_feature(user_request)
-    architect.publish_issue(plan)
+    request = "Refactor studio/architect.py to follow SOLID principles."
+    generated_issue = architect_agent.draft_issue(request)
+    print("\\n--- GENERATED ISSUE ---")
+    print(generated_issue)

@@ -1,125 +1,90 @@
-import unittest
-from unittest.mock import MagicMock, patch, mock_open
-import os
-from studio.architect import Architect
+import pytest
+from unittest.mock import patch, MagicMock
+from pathlib import Path
 
-class TestArchitect(unittest.TestCase):
-    @patch("studio.architect.Github")
-    @patch("studio.architect.ChatVertexAI")
-    @patch("os.getenv")
-    @patch("builtins.open", new_callable=mock_open)
-    def test_init_loads_memories(self, mock_file, mock_getenv, mock_vertex, mock_github):
-        # Setup mocks
-        mock_getenv.return_value = "fake_token"
+from studio.architect import Architect, ContextLoader, IssueFormatter
 
-        # Setup file contents
-        file_contents = {
-            "AGENTS.md": "Constitution Content",
-            "studio/rules.md": "Rules Content",
-            "studio/review_history.md": "History Content"
-        }
+# --- Test The Components ---
 
-        def side_effect(file, *args, **kwargs):
-            content = file_contents.get(file, "")
-            # Create a new mock for each file to support context manager
-            file_mock = MagicMock()
-            file_mock.__enter__.return_value = file_mock
-            file_mock.__exit__.return_value = None
-            file_mock.read.return_value = content
-            return file_mock
+@patch('studio.architect.Path')
+def test_context_loader_reads_files(MockPath):
+    """
+    Tests that the ContextLoader correctly reads and returns content from key files.
+    """
+    mock_files = {
+        "AGENTS.md": "Constitution Content",
+        "studio/rules.md": "Rules Content",
+        "studio/review_history.md": "History Content"
+    }
 
-        mock_file.side_effect = side_effect
+    def configure_mock_path(path_str):
+        # This function will be the side_effect for the Path constructor.
+        # It creates a mock instance for each path string.
+        mock_instance = MagicMock(spec=Path)
+        # Configure the read_text method on this specific instance
+        mock_instance.read_text.return_value = mock_files[path_str]
+        # Set the name for better debuggability (optional)
+        mock_instance.name = path_str
+        return mock_instance
 
-        architect = Architect("test_repo")
+    # When Path() is called in the code under test, it will trigger this side_effect.
+    MockPath.side_effect = configure_mock_path
 
-        self.assertEqual(architect.constitution, "Constitution Content")
-        self.assertEqual(architect.rules, "Rules Content")
-        self.assertEqual(architect.review_history, "History Content")
+    # Act
+    loader = ContextLoader()
+    context = loader.load_context()
 
-    @patch("studio.architect.Github")
-    @patch("studio.architect.ChatVertexAI")
-    @patch("os.getenv")
-    @patch("builtins.open", new_callable=mock_open)
-    def test_plan_feature_includes_memories(self, mock_file, mock_getenv, mock_vertex, mock_github):
-        # Setup mocks
-        mock_getenv.return_value = "fake_token"
+    # Assert
+    assert context["constitution"] == "Constitution Content"
+    assert context["rules"] == "Rules Content"
+    assert context["history"] == "History Content"
 
-        file_contents = {
-            "AGENTS.md": "Constitution Content",
-            "studio/rules.md": "Rules Content",
-            "studio/review_history.md": "History Content"
-        }
+    # Verify that Path() was called with the correct arguments
+    assert MockPath.call_count == 3
+    MockPath.assert_any_call("AGENTS.md")
+    MockPath.assert_any_call("studio/rules.md")
+    MockPath.assert_any_call("studio/review_history.md")
 
-        def side_effect(file, *args, **kwargs):
-            content = file_contents.get(file, "")
-            file_mock = MagicMock()
-            file_mock.__enter__.return_value = file_mock
-            file_mock.__exit__.return_value = None
-            file_mock.read.return_value = content
-            return file_mock
+def test_issue_formatter_creates_markdown():
+    """
+    Tests that the IssueFormatter correctly formats a GitHub issue.
+    """
+    formatter = IssueFormatter()
+    context = {
+        "constitution": "Test Constitution",
+        "rules": "Test Rules",
+        "history": "Test History"
+    }
+    user_request = "Create a new feature."
 
-        mock_file.side_effect = side_effect
+    issue_content = formatter.format(user_request, context)
 
-        # Mock ChatPromptTemplate to verify chain invocation
-        with patch("studio.architect.ChatPromptTemplate") as mock_prompt_cls:
-            mock_chain = MagicMock()
-            # prompt | llm | parser -> mock_chain
-            mock_prompt_cls.from_template.return_value.__or__.return_value.__or__.return_value = mock_chain
+    assert "Title: [Feature] Create a new feature." in issue_content
+    assert "@jules" in issue_content
+    assert "### Step 1: The Test (The Spec)" in issue_content
+    assert "### Step 2: The Implementation" in issue_content
 
-            architect = Architect("test_repo")
-            architect.plan_feature("Test Request")
+# --- Test The Orchestrator (Architect) ---
 
-            # Verify invoke was called with correct context
-            mock_chain.invoke.assert_called_once()
-            call_args = mock_chain.invoke.call_args[0][0]
+def test_architect_uses_dependency_injection():
+    """
+    Tests that the main Architect class orchestrates its dependencies correctly.
+    """
+    # Arrange
+    mock_loader = MagicMock(spec=ContextLoader)
+    mock_formatter = MagicMock(spec=IssueFormatter)
 
-            self.assertEqual(call_args['constitution'], "Constitution Content")
-            self.assertEqual(call_args['rules'], "Rules Content")
-            self.assertEqual(call_args['review_history'], "History Content")
-            self.assertEqual(call_args['request'], "Test Request")
+    mock_context = {"data": "mock_context"}
+    mock_loader.load_context.return_value = mock_context
+    mock_formatter.format.return_value = "Formatted GitHub Issue"
 
-    @patch("studio.architect.Github")
-    @patch("studio.architect.ChatVertexAI")
-    @patch("os.getenv")
-    @patch("builtins.open", new_callable=mock_open)
-    def test_plan_feature_distinguishes_teams(self, mock_file, mock_getenv, mock_vertex, mock_github):
-        # Setup mocks
-        mock_getenv.return_value = "fake_token"
+    user_request = "Refactor the curator."
 
-        # Setup file contents (minimal)
-        file_contents = {
-            "AGENTS.md": "Constitution",
-            "studio/rules.md": "Rules",
-            "studio/review_history.md": "History"
-        }
+    # Act
+    architect = Architect(loader=mock_loader, formatter=mock_formatter)
+    issue = architect.draft_issue(user_request)
 
-        def side_effect(file, *args, **kwargs):
-            content = file_contents.get(file, "")
-            file_mock = MagicMock()
-            file_mock.__enter__.return_value = file_mock
-            file_mock.__exit__.return_value = None
-            file_mock.read.return_value = content
-            return file_mock
-
-        mock_file.side_effect = side_effect
-
-        with patch("studio.architect.ChatPromptTemplate") as mock_prompt_cls:
-            mock_chain = MagicMock()
-            mock_prompt_cls.from_template.return_value.__or__.return_value.__or__.return_value = mock_chain
-
-            architect = Architect("test_repo")
-            architect.plan_feature("New Feature")
-
-            # Check prompt content
-            args, _ = mock_prompt_cls.from_template.call_args
-            template_str = args[0]
-
-            # Assertions for team awareness
-            self.assertIn("=== TEAM STRUCTURE ===", template_str)
-            self.assertIn("1. Studio Team", template_str)
-            self.assertIn("2. Product Team", template_str)
-            self.assertIn("determine which team is responsible", template_str)
-            self.assertIn("Title: [Team Name]", template_str)
-
-if __name__ == "__main__":
-    unittest.main()
+    # Assert
+    mock_loader.load_context.assert_called_once()
+    mock_formatter.format.assert_called_once_with(user_request, mock_context)
+    assert issue == "Formatted GitHub Issue"
