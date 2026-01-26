@@ -79,6 +79,15 @@ class Architect:
         {review_history}
         =======================================
 
+        === TEAM STRUCTURE ===
+        1. Studio Team (Internal Tools): Responsible for the management layer (studio/).
+           - Components: Architect, ReviewAgent, ProductManager, Rules, History.
+           - Goal: Build tools that build the product.
+
+        2. Product Team (The Application): Responsible for the core content generation system (product/).
+           - Components: Curator, Researcher, Analyst, Broadcaster.
+           - Goal: The "Deep Context Reader" system.
+
         === TDD MANDATE ===
         We follow strict Test-Driven Development (TDD).
         For every bug fix or feature request, you MUST instruct the developer (Jules) to:
@@ -90,11 +99,12 @@ class Architect:
         {request}
         
         === INSTRUCTIONS ===
+        Analyze the request to determine which team is responsible (Studio Team or Product Team).
         Draft a GitHub Issue in the following format. 
         Be extremely specific about file paths (e.g., product/curator.py, tests/test_curator.py).
         
         Format:
-        Title: [Tag] <Concise Title>
+        Title: [Team Name] [Tag] <Concise Title>
         Body:
         @jules
         <Context & Objective>
