@@ -10,6 +10,9 @@
 
 **Principle 3:** TDD. Red-Green-Refactor is mandatory for all code changes.
 
+**Principle 4:** Refactor according to the SOLID principles.
+ 
+
 ---
 
 ## 2. Official Directory Structure (The Territory)
@@ -46,9 +49,12 @@ All agents MUST respect this structure. DO NOT delete files listed here unless e
 
 * **Architect:** Reads this file. Plans features. Enforces TDD.
 
-* **ReviewAgent:** Monitors PRs. Runs pytest. Merges ONLY if green.
+* **ReviewAgent:** Monitors and review PRs. Runs pytest. Merges ONLY if green.
 
 * **ProductManager (PM):** High-level planner. Generates execution plans JSON.
+* * The Product Manager (PM) Agent is the **owner of product intent and product quality**.
+  * The PM Agent does not produce content or code.
+  * Its responsibility is to define **what meaningful output is** and to judge **whether the Product Team’s output delivers real user value**.
 
 ### Product Agents (The Application)
 
