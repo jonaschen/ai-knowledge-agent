@@ -41,6 +41,22 @@ class Architect:
             print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
             self.constitution = "Focus on reliability and modularity."
 
+        # Load Long-term Memory (Rules)
+        try:
+            with open("studio/rules.md", "r") as f:
+                self.rules = f.read()
+        except FileNotFoundError:
+            print("⚠️ Warning: studio/rules.md not found.")
+            self.rules = "No specific rules defined yet."
+
+        # Load Active Memory (Review History)
+        try:
+            with open("studio/review_history.md", "r") as f:
+                self.review_history = f.read()
+        except FileNotFoundError:
+            print("⚠️ Warning: studio/review_history.md not found.")
+            self.review_history = "No recent review history."
+
     def plan_feature(self, user_request: str) -> str:
         """
         核心邏輯：將需求轉化為 Issue
@@ -55,6 +71,14 @@ class Architect:
         {constitution}
         =====================================
         
+        === LONG-TERM MEMORY (Design Patterns & Rules) ===
+        {rules}
+        ==================================================
+
+        === ACTIVE MEMORY (Recent Failures) ===
+        {review_history}
+        =======================================
+
         === TDD MANDATE ===
         We follow strict Test-Driven Development (TDD).
         For every bug fix or feature request, you MUST instruct the developer (Jules) to:
@@ -90,6 +114,8 @@ class Architect:
         
         return chain.invoke({
             "constitution": self.constitution,
+            "rules": self.rules,
+            "review_history": self.review_history,
             "request": user_request
         })
 

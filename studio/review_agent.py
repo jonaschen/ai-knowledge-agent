@@ -154,6 +154,11 @@ class ReviewAgent:
         return analysis
 
     def write_history(self, analysis: dict):
+        # Only write to history if running in CI or explicitly enabled
+        if not os.getenv("CI") and not os.getenv("UPDATE_REVIEW_HISTORY"):
+            logging.info("Skipping write to review_history.md (not in CI and UPDATE_REVIEW_HISTORY not set).")
+            return
+
         today = datetime.now().strftime("%Y-%m-%d")
 
         # Ensure required keys exist to prevent errors, providing default values
