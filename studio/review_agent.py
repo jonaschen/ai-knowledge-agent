@@ -184,10 +184,13 @@ class ReviewAgent:
                             # Existing Failure Analysis Logic
                             error_log = test_result.stdout[-2000:] + "\n" + test_result.stderr[-2000:]
                             analysis = self.analyze_failure(error_log, pr.number)
-                            self.write_history(analysis)
-
-                            # Commit history logic (Only if tests failed, we record it)
-                            self._commit_review_history(pr, local_pr_branch)
+                            # Only attempt to commit history if writing was successful
+                            if os.getenv("CI") or os.getenv("UPDATE_REVIEW_HISTORY"):
+                                self.write_history(analysis)
+                                # Commit history logic (Only if tests failed, we record it)
+                                self._commit_review_history(pr, local_pr_branch)
+                            else:
+                                logging.info("Skipping write/commit of review_history.md (not in CI/enabled).")
 
                             feedback_parts.append(
                                 f"**Analysis**:\n"
