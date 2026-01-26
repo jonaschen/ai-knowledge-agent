@@ -61,6 +61,20 @@ class Researcher:
         query = f'reviews of the book "{book_title}"'
         return self.search(query=query)
 
+    def find_books(self, topic: str) -> list[dict]:
+        """
+        A specialized search method to find books on a specific topic.
+
+        Args:
+            topic (str): The topic to find books about.
+
+        Returns:
+            list[dict]: A list of search results from the main search method.
+        """
+        # Construct a query tailored for finding books.
+        query = f'books on the topic of "{topic}"'
+        return self.search(query=query)
+
 
 # --- Additional Content Fetching Utilities (Youtube, HN) ---
 

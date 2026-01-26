@@ -9,6 +9,8 @@ from tavily import TavilyClient
 from langgraph.graph import StateGraph, END
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage
+from googleapiclient.errors import HttpError
+from product.researcher import Researcher
 
 load_dotenv()
 
@@ -28,27 +30,9 @@ class Curator:
     def __init__(self):
         self.tavily_api_key = os.getenv("TAVILY_API_KEY")
 
-    def _adapt_tavily_results(self, results: dict) -> list:
-        """Adapts Tavily search results to our standard book format."""
-        adapted_books = []
-        if "results" in results:
-            for item in results["results"]:
-                adapted_books.append({
-                    "title": item.get("title"),
-                    "authors": ["N/A"],
-                    "description": item.get("content"),
-                })
-        return adapted_books
-
-    def _fallback_to_tavily(self, query: str) -> list:
-        """Initializes Tavily client, performs search, and adapts results."""
-        client = TavilyClient(api_key=self.tavily_api_key)
-        tavily_results = client.search(query=f"best books on {query}", search_depth="basic")
-        return self._adapt_tavily_results(tavily_results)
-
     def _search_google_books(self, query: str, max_results=20):
-        """從 Google Books 獲取候選書籍"""
-        print(f"--- 正在搜索 Google Books: {query} ---")
+        """Gets candidate books from Google Books."""
+        print(f"--- Searching Google Books: {query} ---")
         url = "https://www.googleapis.com/books/v1/volumes"
         params = {
             "q": query,
@@ -82,16 +66,32 @@ class Curator:
             logging.warning(f"Google Books API Response (No items): {data}")
         return books
 
+    def _adapt_researcher_results(self, results: list) -> list:
+        """Adapts Researcher search results to our standard book format."""
+        adapted_books = []
+        for item in results:
+            adapted_books.append({
+                "title": item.get("title"),
+                "authors": item.get("authors", ["N/A"]),
+                "description": item.get("content"),
+            })
+        return adapted_books
+
     def search(self, query: str):
         """
-        Searches for a book, first using Google Books and falling back to Tavily.
+        Searches for a book, first using Google Books and falling back to Researcher.
         """
         try:
             print("Attempting search with primary API (Google Books)...")
             return self._search_google_books(query)
-        except Exception as e:
-            print(f"Primary API failed: {e}. Falling back to Tavily.")
-            return self._fallback_to_tavily(query)
+        except HttpError as e:
+            if e.resp.status == 429:
+                print("Google Books API rate limit exceeded. Falling back to Researcher.")
+                researcher = Researcher(tavily_api_key=self.tavily_api_key)
+                book_results = researcher.find_books(query)
+                return self._adapt_researcher_results(book_results)
+            else:
+                raise e
 
 
 # --- 1. 定義狀態 ---

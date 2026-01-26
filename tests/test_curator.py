@@ -137,20 +137,25 @@ class TestCurator(unittest.TestCase):
         self.assertEqual(result, expected_dict, "The method failed to strip Markdown and parse the JSON correctly.")
 
     @patch('product.curator.Curator._search_google_books')
-    @patch('product.curator.TavilyClient')
-    def test_curator_uses_tavily_on_google_books_failure(self, mock_tavily_client, mock_google_api):
+    @patch('product.curator.Researcher')
+    def test_curator_uses_researcher_on_google_books_failure(self, mock_researcher_class, mock_google_api):
         """
         GIVEN a Curator instance
         WHEN the primary Google Books search fails (e.g., raises an exception)
-        THEN the system must fall back to using the TavilyClient for the search.
+        THEN the system must fall back to using the Researcher for the search.
         """
         # Arrange: Simulate Google Books API failure
-        mock_google_api.side_effect = Exception("API Limit Reached")
+        from googleapiclient.errors import HttpError
+        from unittest.mock import MagicMock
+        mock_google_api.side_effect = HttpError(
+            resp=MagicMock(status=429, reason="Rate Limit Exceeded"),
+            content=b'Rate Limit Exceeded'
+        )
 
-        # Arrange: Mock the Tavily client and its search method
-        mock_tavily_instance = MagicMock()
-        mock_tavily_instance.search.return_value = {"results": [{"title": "Fallback Book"}]}
-        mock_tavily_client.return_value = mock_tavily_instance
+        # Arrange: Mock the Researcher and its find_books method
+        mock_researcher_instance = MagicMock()
+        mock_researcher_instance.find_books.return_value = [{"title": "Fallback Book", "authors": ["Author"], "content": "Description"}]
+        mock_researcher_class.return_value = mock_researcher_instance
 
         # Act
         curator_instance = Curator()
@@ -159,12 +164,12 @@ class TestCurator(unittest.TestCase):
         # Assert: Verify that _search_google_books was called and failed
         mock_google_api.assert_called_once()
 
-        # Assert: Verify that TavilyClient was initialized and its search method was called
-        mock_tavily_client.assert_called_once_with(api_key="TAVILY_API_KEY")
-        mock_tavily_instance.search.assert_called_once_with(query="best books on some query", search_depth="basic")
+        # Assert: Verify that Researcher was initialized and its find_books method was called
+        mock_researcher_class.assert_called_once()
+        mock_researcher_instance.find_books.assert_called_once_with("some query")
 
         # Assert: Verify that the fallback results are returned
-        self.assertEqual(results, [{"title": "Fallback Book", "authors": ["N/A"], "description": None}])
+        self.assertEqual(results, [{"title": "Fallback Book", "authors": ["Author"], "description": "Description"}])
 
 
 if __name__ == '__main__':
