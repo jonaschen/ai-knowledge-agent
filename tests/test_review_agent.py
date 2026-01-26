@@ -1,4 +1,7 @@
 import unittest
+import subprocess
+import tempfile
+from pathlib import Path
 from unittest.mock import patch, mock_open, MagicMock, ANY
 from datetime import datetime
 import re
@@ -206,6 +209,55 @@ class TestReviewAgent(unittest.TestCase):
             re.sub(r'\s+', ' ', written_content).strip(),
             re.sub(r'\s+', ' ', expected_content).strip()
         )
+
+    def test_agent_can_commit_ignored_history_file(self):
+        """
+        Ensures the ReviewAgent can force-add the ignored review_history.md file.
+        This test will fail before the fix is applied.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            studio_dir = repo_path / "studio"
+            studio_dir.mkdir()
+
+            # Initialize Git repo and make initial commit
+            subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, check=True)
+            (repo_path / ".gitignore").write_text("studio/review_history.md\n")
+            (studio_dir / "review_history.md").write_text("## [PR #101] A test failure")
+            subprocess.run(["git", "add", "."], cwd=repo_path, check=True)
+            subprocess.run(["git", "commit", "-m", "initial commit"], cwd=repo_path, check=True, capture_output=True)
+
+            # The agent operates on a local branch representing the PR
+            local_pr_branch = "pr-101"
+            subprocess.run(["git", "checkout", "-b", local_pr_branch], cwd=repo_path, check=True)
+
+            # Create a mock PR object that mimics the GitHub PR structure
+            mock_pr = MagicMock()
+            mock_pr.number = 101
+            mock_pr.head.ref = "feature-branch-name" # The name of the branch in the remote fork
+
+            # Instantiate the agent with the temporary repo path
+            agent = ReviewAgent(repo_path=str(repo_path), github_client=self.mock_github_client)
+
+            # Call the method under test.
+            # Before the fix, this will log an error but not raise, and no commit will be made.
+            # The push command will also fail because there's no remote, which is also caught.
+            agent._commit_review_history(mock_pr, local_pr_branch)
+
+            # Verify that the commit was NOT made (this is the state before the fix)
+            # To create a failing test, we assert that the commit *was* made.
+            log_output = subprocess.run(
+                ["git", "log", "--oneline"],
+                cwd=repo_path,
+                check=True,
+                capture_output=True,
+                text=True
+            ).stdout
+
+            # This assertion will fail before the fix, creating our "Red" state.
+            self.assertIn(f"docs: update review history for PR #{mock_pr.number}", log_output)
 
 if __name__ == "__main__":
     unittest.main()
