@@ -54,7 +54,8 @@ class TestReviewAgent(unittest.TestCase):
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.path.exists")
-    def test_write_history(self, mock_exists, mock_file):
+    @patch("os.makedirs")
+    def test_write_history(self, mock_makedirs, mock_exists, mock_file):
         """
         Tests if the agent formats and appends the failure log correctly.
         """
