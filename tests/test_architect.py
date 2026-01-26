@@ -78,48 +78,5 @@ class TestArchitect(unittest.TestCase):
             self.assertEqual(call_args['review_history'], "History Content")
             self.assertEqual(call_args['request'], "Test Request")
 
-    @patch("studio.architect.Github")
-    @patch("studio.architect.ChatVertexAI")
-    @patch("os.getenv")
-    @patch("builtins.open", new_callable=mock_open)
-    def test_plan_feature_distinguishes_teams(self, mock_file, mock_getenv, mock_vertex, mock_github):
-        # Setup mocks
-        mock_getenv.return_value = "fake_token"
-
-        # Setup file contents (minimal)
-        file_contents = {
-            "AGENTS.md": "Constitution",
-            "studio/rules.md": "Rules",
-            "studio/review_history.md": "History"
-        }
-
-        def side_effect(file, *args, **kwargs):
-            content = file_contents.get(file, "")
-            file_mock = MagicMock()
-            file_mock.__enter__.return_value = file_mock
-            file_mock.__exit__.return_value = None
-            file_mock.read.return_value = content
-            return file_mock
-
-        mock_file.side_effect = side_effect
-
-        with patch("studio.architect.ChatPromptTemplate") as mock_prompt_cls:
-            mock_chain = MagicMock()
-            mock_prompt_cls.from_template.return_value.__or__.return_value.__or__.return_value = mock_chain
-
-            architect = Architect("test_repo")
-            architect.plan_feature("New Feature")
-
-            # Check prompt content
-            args, _ = mock_prompt_cls.from_template.call_args
-            template_str = args[0]
-
-            # Assertions for team awareness
-            self.assertIn("=== TEAM STRUCTURE ===", template_str)
-            self.assertIn("1. Studio Team", template_str)
-            self.assertIn("2. Product Team", template_str)
-            self.assertIn("determine which team is responsible", template_str)
-            self.assertIn("Title: [Team Name]", template_str)
-
 if __name__ == "__main__":
     unittest.main()

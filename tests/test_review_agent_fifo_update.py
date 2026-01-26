@@ -80,8 +80,7 @@ def test_process_open_prs_updates_history_on_failure(git_repo, monkeypatch):
     # But wait, we are modifying the code to use repo_path.
     # For this test to pass, the code MUST be modified to use repo_path for writing history.
 
-    with patch.dict(os.environ, {"UPDATE_REVIEW_HISTORY": "true"}):
-        agent.process_open_prs([mock_pr])
+    agent.process_open_prs([mock_pr])
 
     # Assertions
 

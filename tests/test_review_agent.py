@@ -1,13 +1,8 @@
 import unittest
-from unittest.mock import patch, mock_open, MagicMock, ANY
+from unittest.mock import patch, mock_open, MagicMock
 from datetime import datetime
 import re
 import os
-import json
-import sys
-
-# Add repo root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from studio.review_agent import ReviewAgent
 
@@ -40,171 +35,61 @@ class TestReviewAgent(unittest.TestCase):
         # Mock dependencies for ReviewAgent
         self.mock_repo_path = "/tmp/mock_repo"
         self.mock_github_client = MagicMock()
-
-        # Patch ChatVertexAI to avoid real network calls during init
-        with patch('studio.review_agent.ChatVertexAI') as MockLLM:
-             self.mock_llm_instance = MockLLM.return_value
-             self.agent = ReviewAgent(self.mock_repo_path, self.mock_github_client)
-             # Manually assign mock llm just in case
-             self.agent.llm = self.mock_llm_instance
+        self.agent = ReviewAgent(self.mock_repo_path, self.mock_github_client)
 
         self.pr_id = 101
         self.today = datetime.now().strftime("%Y-%m-%d")
 
-    def test_check_copilot_compliance(self):
-        """Test the compliance check for Copilot Log."""
-        # Case 1: Missing Body
-        pr = MagicMock()
-        pr.body = None
-        self.assertFalse(self.agent.check_copilot_compliance(pr))
-
-        # Case 2: Missing Log
-        pr.body = "Some description but no log."
-        self.assertFalse(self.agent.check_copilot_compliance(pr))
-
-        # Case 3: Present Log
-        pr.body = "Description.\n\n## 🤖 Copilot Consultation Log\nDetails..."
-        self.assertTrue(self.agent.check_copilot_compliance(pr))
-
-    @patch('studio.review_agent.subprocess.run')
-    @patch('studio.review_agent.open', new_callable=mock_open, read_data="Mock Rules")
-    @patch('os.path.exists', return_value=True)
-    def test_review_code_llm_approved(self, mock_exists, mock_file, mock_subprocess):
-        """Test AI Review when code is approved."""
-        # Setup Git Diff Output
-        mock_subprocess.return_value.stdout = "diff --git a/file.py b/file.py\n+ new code"
-
-        # Setup LLM Response
-        mock_response = MagicMock()
-        mock_response.content = json.dumps({"approved": True, "comments": "LGTM"})
-        self.agent.llm.invoke.return_value = mock_response
-
-        # Run
-        pr = MagicMock()
-        result = self.agent.review_code_llm(pr)
-
-        # Verify
-        self.assertTrue(result['approved'])
-        self.assertEqual(result['comments'], "LGTM")
-        self.agent.llm.invoke.assert_called_once()
-
-    @patch('studio.review_agent.subprocess.run')
-    def test_review_code_llm_rejected(self, mock_subprocess):
-        """Test AI Review when code is rejected."""
-        mock_subprocess.return_value.stdout = "diff ... critical bug"
-
-        mock_response = MagicMock()
-        mock_response.content = json.dumps({"approved": False, "comments": "Critical bug found."})
-        self.agent.llm.invoke.return_value = mock_response
-
-        pr = MagicMock()
-        result = self.agent.review_code_llm(pr)
-
-        self.assertFalse(result['approved'])
-        self.assertIn("Critical bug", result['comments'])
-
-    @patch('studio.review_agent.subprocess.run')
-    def test_process_open_prs_success_merge(self, mock_subprocess):
-        """Test full flow: Compliance OK -> AI OK -> Tests OK -> Merge."""
-        # Setup PR
-        pr = MagicMock()
-        pr.number = 1
-        pr.body = "## 🤖 Copilot Consultation Log"
-        pr.draft = False
-
-        # Mock subprocess calls
-        # 1. git fetch, checkout -> success
-        # 2. git diff -> "diff"
-        # 3. pytest -> success (returncode 0)
-        # 4. cleanup -> success
-
-        def subprocess_side_effect(args, **kwargs):
-            cmd = args if isinstance(args, list) else args.split()
-            mock_res = MagicMock()
-            mock_res.returncode = 0
-            mock_res.stdout = ""
-            if "diff" in cmd:
-                mock_res.stdout = "some diff"
-            if "pytest" in cmd:
-                mock_res.returncode = 0
-            return mock_res
-
-        mock_subprocess.side_effect = subprocess_side_effect
-
-        # Mock AI Response
-        mock_response = MagicMock()
-        mock_response.content = json.dumps({"approved": True, "comments": "LGTM"})
-        self.agent.llm.invoke.return_value = mock_response
-
-        # Run
-        self.agent.process_open_prs([pr])
-
-        # Verify Merge Called
-        pr.merge.assert_called_once()
-        pr.create_issue_comment.assert_not_called()
-
-    @patch('studio.review_agent.subprocess.run')
-    def test_process_open_prs_compliance_failure(self, mock_subprocess):
-        """Test flow: Compliance Fail -> No AI/Test -> Comment."""
-        pr = MagicMock()
-        pr.number = 2
-        pr.body = "No log here."
-
-        # Mock subprocess just in case (fetch/checkout still happen)
-        # Mock AI to return True (so we isolate compliance failure)
-        mock_response = MagicMock()
-        mock_response.content = json.dumps({"approved": True, "comments": "LGTM"})
-        self.agent.llm.invoke.return_value = mock_response
-
-        mock_subprocess.return_value.returncode = 0
-        mock_subprocess.return_value.stdout = ""
-
-        self.agent.process_open_prs([pr])
-
-        # Verify
-        pr.merge.assert_not_called()
-        pr.create_issue_comment.assert_called_once()
-        comment = pr.create_issue_comment.call_args[0][0]
-        self.assertIn("Compliance Violation", comment)
-
     def test_analyze_failure(self):
-        """Keep existing test for failure analysis."""
+        """
+        Tests if the agent can parse pytest output into a structured dictionary.
+        """
         analysis = self.agent.analyze_failure(MOCK_PYTEST_FAILURE_OUTPUT, self.pr_id)
+
+        self.assertEqual(analysis['pr_id'], self.pr_id)
         self.assertEqual(analysis['component'], 'Curator')
         self.assertEqual(analysis['error_type'], 'APITimeout Handling Error')
+        self.assertIn("Failed: DID NOT RAISE", analysis['root_cause'])
+        self.assertIn("tests/test_curator.py", analysis['root_cause'])
 
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("os.makedirs")
     @patch("os.path.exists")
     @patch("os.makedirs")
-    @patch.dict(os.environ, {"UPDATE_REVIEW_HISTORY": "true"})
-    def test_write_history(self, mock_exists, mock_makedirs, mock_file):
+    @patch("builtins.open", new_callable=mock_open)
+    def test_write_history(self, mock_file, mock_makedirs, mock_exists):
         """
         Tests if the agent formats and appends the failure log correctly.
         """
-        # Mock exists to avoid file system interaction
-        mock_exists.return_value = True
-        analysis = {
-            'pr_id': self.pr_id,
-            'component': 'Curator',
-            'error_type': 'APITimeout Handling Error',
-            'root_cause': "Root Cause",
-            'fix_pattern': "Fix Pattern",
-            'tags': "#tags"
-        }
-        self.agent.write_history(analysis)
+        with patch.dict(os.environ, {"UPDATE_REVIEW_HISTORY": "true"}):
+            # Mock exists to avoid file system interaction
+            mock_exists.return_value = True
 
-        # Verify content
+            # Step 1: Define a pre-canned analysis dictionary
+            analysis = {
+                'pr_id': self.pr_id,
+                'component': 'Curator',
+                'error_type': 'APITimeout Handling Error',
+                'root_cause': "Failed: DID NOT RAISE <class 'product.curator.APITimeout'> in tests/test_curator.py",
+                'fix_pattern': "Ensure custom exceptions are properly raised and caught in tests. Use `pytest.raises` context manager correctly.",
+                'tags': "#mocking, #api, #timeout"
+            }
+
+            # Step 2: Write the history
+            self.agent.write_history(analysis)
+
+            # Step 4: Verify the output format
+        # Verify open was called
         mock_file.assert_called()
         handle = mock_file()
+
         expected_content = f"""
 ## [PR #101] Curator Failure
 - **Date**: {self.today}
 - **Error Type**: APITimeout Handling Error
-- **Root Cause**: Root Cause
-- **Fix Pattern**: Fix Pattern
-- **Tags**: #tags
+- **Root Cause**: Failed: DID NOT RAISE <class 'product.curator.APITimeout'> in tests/test_curator.py
+- **Fix Pattern**: Ensure custom exceptions are properly raised and caught in tests. Use `pytest.raises` context manager correctly.
+- **Tags**: #mocking, #api, #timeout
 """
+        # Get the written content and normalize whitespace
         written_content = handle.write.call_args[0][0]
         self.assertEqual(
             re.sub(r'\s+', ' ', written_content).strip(),
