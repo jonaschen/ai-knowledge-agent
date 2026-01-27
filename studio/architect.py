@@ -16,7 +16,7 @@ class Architect:
     It translates high-level goals into precise, TDD-compliant GitHub Issues.
     """
     
-    def __init__(self, repo_name: str):
+    def __init__(self, repo_name: str, rules_path: str = "studio/rules.md", history_path: str = "studio/review_history.md"):
         token = os.getenv("GITHUB_TOKEN")
         if not token:
             raise ValueError("❌ CRITICAL: GITHUB_TOKEN not found in .env file. Architect cannot work without it.")
@@ -43,19 +43,17 @@ class Architect:
 
         # Load Long-term Memory (Rules)
         try:
-            with open("studio/rules.md", "r") as f:
+            with open(rules_path, "r") as f:
                 self.rules = f.read()
         except FileNotFoundError:
-            print("⚠️ Warning: studio/rules.md not found.")
-            self.rules = "No specific rules defined yet."
+            raise FileNotFoundError(f"❌ CRITICAL: Rules file not found at {rules_path}")
 
         # Load Active Memory (Review History)
         try:
-            with open("studio/review_history.md", "r") as f:
+            with open(history_path, "r") as f:
                 self.review_history = f.read()
         except FileNotFoundError:
-            print("⚠️ Warning: studio/review_history.md not found.")
-            self.review_history = "No recent review history."
+            raise FileNotFoundError(f"❌ CRITICAL: Review history file not found at {history_path}")
 
     def plan_feature(self, user_request: str) -> str:
         """
@@ -70,12 +68,12 @@ class Architect:
         === YOUR CONSTITUTION (AGENTS.md) ===
         {constitution}
         =====================================
-        
-        === LONG-TERM MEMORY (Design Patterns & Rules) ===
-        {rules}
-        ==================================================
 
-        === ACTIVE MEMORY (Recent Failures) ===
+        === KNOWLEDGE BASE ===
+        RULES (rules.md):
+        {rules}
+
+        RECENT FAILURES (review_history.md):
         {review_history}
         =======================================
 
@@ -100,6 +98,7 @@ class Architect:
         
         === INSTRUCTIONS ===
         Analyze the request to determine which team is responsible (Studio Team or Product Team).
+        Before generating the Issue, cross-reference the User Request with the Knowledge Base. If a known anti-pattern is detected (e.g., Pydantic Mocking), explicitly add a constraint in the Issue Body.
         Draft a GitHub Issue in the following format. 
         Be extremely specific about file paths (e.g., product/curator.py, tests/test_curator.py).
         
