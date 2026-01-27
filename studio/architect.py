@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 from github import Github
@@ -7,7 +8,7 @@ from langchain_google_vertexai import ChatVertexAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-# 確保能讀取到環境變數
+# Ensure environment variables are loaded
 load_dotenv()
 
 class Architect:
@@ -16,46 +17,36 @@ class Architect:
     It translates high-level goals into precise, TDD-compliant GitHub Issues.
     """
     
-    def __init__(self, repo_name: str):
+    def __init__(self, repo_name: str, agents_md_path: str = "AGENTS.md", rules_path: str = "studio/rules.md", history_path: str = "studio/review_history.md"):
         token = os.getenv("GITHUB_TOKEN")
         if not token:
             raise ValueError("❌ CRITICAL: GITHUB_TOKEN not found in .env file. Architect cannot work without it.")
 
         self.github = Github(os.getenv("GITHUB_TOKEN"))
-
         self.repo = self.github.get_repo(repo_name)
         
-        # 使用 Gemini 2.5 Pro 作為大腦，Temperature 稍高以利於規劃
+        # Use Gemini 2.5 Pro as the brain, with a slightly higher temperature for planning.
         self.llm = ChatVertexAI(
             model_name="gemini-2.5-pro",
             temperature=0.2, 
             max_output_tokens=8192
         )
         
-        # 載入憲法 (Constitution)
-        # 注意：搬家後 AGENTS.md 應該還是在根目錄，所以路徑可能需要調整
-        try:
-            with open("AGENTS.md", "r") as f:
-                self.constitution = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
-            self.constitution = "Focus on reliability and modularity."
+        # Load constitution, rules, and history. Paths can be overridden for testing.
+        self.agents_md_path = Path(agents_md_path)
+        self.rules_path = Path(rules_path)
+        self.history_path = Path(history_path)
 
-        # Load Long-term Memory (Rules)
-        try:
-            with open("studio/rules.md", "r") as f:
-                self.rules = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: studio/rules.md not found.")
-            self.rules = "No specific rules defined yet."
+        if not self.agents_md_path.is_file():
+            raise FileNotFoundError(f"Constitution not found at {self.agents_md_path}")
+        if not self.rules_path.is_file():
+            raise FileNotFoundError(f"Long-term memory not found at {self.rules_path}")
+        if not self.history_path.is_file():
+            raise FileNotFoundError(f"Active memory not found at {self.history_path}")
 
-        # Load Active Memory (Review History)
-        try:
-            with open("studio/review_history.md", "r") as f:
-                self.review_history = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: studio/review_history.md not found.")
-            self.review_history = "No recent review history."
+        self.constitution = self.agents_md_path.read_text()
+        self.rules = self.rules_path.read_text()
+        self.review_history = self.history_path.read_text()
 
     def plan_feature(self, user_request: str) -> str:
         """
@@ -63,61 +54,40 @@ class Architect:
         """
         print(f"🏗️ Architect is analyzing request: '{user_request}'...")
         
-        system_prompt = """
-        You are the Chief Software Architect for an AI Software Studio.
-        Your goal is to manage the development of the 'Deep Context Reader' project.
-        
-        === YOUR CONSTITUTION (AGENTS.md) ===
-        {constitution}
-        =====================================
-        
-        === LONG-TERM MEMORY (Design Patterns & Rules) ===
-        {rules}
-        ==================================================
+        system_prompt = f"""
+You are the Chief Software Architect for an AI Software Studio.
+Your goal is to translate user requests into TDD-based GitHub Issues for the developer, Jules.
 
-        === ACTIVE MEMORY (Recent Failures) ===
-        {review_history}
-        =======================================
+=== YOUR CONSTITUTION (AGENTS.md) ===
+{self.constitution}
 
-        === TDD MANDATE ===
-        We follow strict Test-Driven Development (TDD).
-        For every bug fix or feature request, you MUST instruct the developer (Jules) to:
-        1. Create a Reproduction Script or Unit Test FIRST.
-        2. Ensure the test fails (Red).
-        3. Write code to pass the test (Green).
+=== KNOWLEDGE BASE ===
+This section contains long-term rules and recent failures. Use it to guide your plan and prevent repeating mistakes.
+
+--- LONG-TERM MEMORY (studio/rules.md) ---
+{self.rules}
+
+--- ACTIVE MEMORY (studio/review_history.md) ---
+{self.review_history}
+---
+
+=== INSTRUCTIONS ===
+You will now receive a user request. Your task is to generate a GitHub issue.
+
+**CRITICAL GUIDANCE**: Before generating the Issue, cross-reference the User Request with the Knowledge Base. If a known anti-pattern is detected (e.g., Pydantic Mocking from rules.md), you MUST explicitly add a "Constraint" section in the Issue Body to warn the developer. explicitly add a constraint in the Issue Body
+
+Follow the TDD mandate: Define the test first, then the implementation.
+Be extremely specific about file paths.
+
+User Request: "{user_request}"
+
+Generate the GitHub Issue now.
+"""
         
-        === USER REQUEST ===
-        {request}
-        
-        === INSTRUCTIONS ===
-        Draft a GitHub Issue in the following format. 
-        Be extremely specific about file paths (e.g., product/curator.py, tests/test_curator.py).
-        
-        Format:
-        Title: [Tag] <Concise Title>
-        Body:
-        @jules
-        <Context & Objective>
-        
-        ### Step 1: The Test (The Spec)
-        <Provide a specific test case or script>
-        
-        ### Step 2: The Implementation
-        <Provide technical guidance on what to change>
-        
-        ### Acceptance Criteria
-        <Bullet points>
-        """
-        
-        prompt = ChatPromptTemplate.from_template(system_prompt)
+        prompt = ChatPromptTemplate.from_template("{prompt}")
         chain = prompt | self.llm | StrOutputParser()
         
-        return chain.invoke({
-            "constitution": self.constitution,
-            "rules": self.rules,
-            "review_history": self.review_history,
-            "request": user_request
-        })
+        return chain.invoke({"prompt": system_prompt})
 
     def publish_issue(self, issue_content: str):
         """

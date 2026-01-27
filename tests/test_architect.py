@@ -1,82 +1,61 @@
-import unittest
-from unittest.mock import MagicMock, patch, mock_open
+import pytest
+from unittest.mock import patch, MagicMock
 import os
+from langchain_core.messages import AIMessage
+
 from studio.architect import Architect
 
-class TestArchitect(unittest.TestCase):
-    @patch("studio.architect.Github")
-    @patch("studio.architect.ChatVertexAI")
-    @patch("os.getenv")
-    @patch("builtins.open", new_callable=mock_open)
-    def test_init_loads_memories(self, mock_file, mock_getenv, mock_vertex, mock_github):
-        # Setup mocks
-        mock_getenv.return_value = "fake_token"
+@patch('studio.architect.ChatVertexAI')
+@patch('studio.architect.Github')
+def test_architect_injects_knowledge_base_into_prompt(mock_github, mock_chat_vertex_ai, tmp_path):
+    """
+    Verify the Architect loads knowledge files and injects them into the LLM prompt.
+    """
+    # Configure the mock to return an AIMessage object when called
+    mock_llm_instance = mock_chat_vertex_ai.return_value
+    mock_llm_instance.return_value = AIMessage(content="Mocked LLM Response")
 
-        # Setup file contents
-        file_contents = {
-            "AGENTS.md": "Constitution Content",
-            "studio/rules.md": "Rules Content",
-            "studio/review_history.md": "History Content"
-        }
+    # 1. Setup: Create mock knowledge base files
+    studio_dir = tmp_path / "studio"
+    studio_dir.mkdir()
+    rules_md = studio_dir / "rules.md"
+    rules_md.write_text("### 1.1 Pydantic Model Mocking\n* **Problem:** Passing `MagicMock` causes `ValidationError`.\n* **Solution:** Always use **concrete types (literals)**.")
 
-        def side_effect(file, *args, **kwargs):
-            content = file_contents.get(file, "")
-            # Create a new mock for each file to support context manager
-            file_mock = MagicMock()
-            file_mock.__enter__.return_value = file_mock
-            file_mock.__exit__.return_value = None
-            file_mock.read.return_value = content
-            return file_mock
+    history_md = studio_dir / "review_history.md"
+    history_md.write_text("## [PR #123] Some Failure\n- **Root Cause**: Used MagicMock with Pydantic.")
 
-        mock_file.side_effect = side_effect
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text("This is the constitution.")
 
-        architect = Architect("test_repo")
+    # 2. The user makes a request that violates a known rule
+    user_request = "Please fix the failing test by using MagicMock for the Pydantic model."
 
-        self.assertEqual(architect.constitution, "Constitution Content")
-        self.assertEqual(architect.rules, "Rules Content")
-        self.assertEqual(architect.review_history, "History Content")
+    # 3. Instantiate the Architect with paths to our mock files, mocking the environment variable
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}):
+        architect = Architect(
+            repo_name="test/repo",
+            rules_path=str(rules_md),
+            history_path=str(history_md),
+            agents_md_path=str(agents_md)
+        )
 
-    @patch("studio.architect.Github")
-    @patch("studio.architect.ChatVertexAI")
-    @patch("os.getenv")
-    @patch("builtins.open", new_callable=mock_open)
-    def test_plan_feature_includes_memories(self, mock_file, mock_getenv, mock_vertex, mock_github):
-        # Setup mocks
-        mock_getenv.return_value = "fake_token"
+    # 4. Run the method being tested
+    architect.plan_feature(user_request)
 
-        file_contents = {
-            "AGENTS.md": "Constitution Content",
-            "studio/rules.md": "Rules Content",
-            "studio/review_history.md": "History Content"
-        }
+    # 5. Assert: Check that the prompt sent to the LLM contains the required elements
+    mock_llm_instance.assert_called_once()
+    prompt_sent_to_llm = mock_llm_instance.call_args[0][0].to_string()
 
-        def side_effect(file, *args, **kwargs):
-            content = file_contents.get(file, "")
-            file_mock = MagicMock()
-            file_mock.__enter__.return_value = file_mock
-            file_mock.__exit__.return_value = None
-            file_mock.read.return_value = content
-            return file_mock
+    # A. Check for the Knowledge Base section
+    assert "=== KNOWLEDGE BASE ===" in prompt_sent_to_llm
 
-        mock_file.side_effect = side_effect
+    # B. Check for content from rules.md
+    assert "Pydantic Model Mocking" in prompt_sent_to_llm
+    assert "Always use **concrete types (literals)**" in prompt_sent_to_llm
 
-        # Mock ChatPromptTemplate to verify chain invocation
-        with patch("studio.architect.ChatPromptTemplate") as mock_prompt_cls:
-            mock_chain = MagicMock()
-            # prompt | llm | parser -> mock_chain
-            mock_prompt_cls.from_template.return_value.__or__.return_value.__or__.return_value = mock_chain
+    # C. Check for content from review_history.md
+    assert "Used MagicMock with Pydantic" in prompt_sent_to_llm
 
-            architect = Architect("test_repo")
-            architect.plan_feature("Test Request")
-
-            # Verify invoke was called with correct context
-            mock_chain.invoke.assert_called_once()
-            call_args = mock_chain.invoke.call_args[0][0]
-
-            self.assertEqual(call_args['constitution'], "Constitution Content")
-            self.assertEqual(call_args['rules'], "Rules Content")
-            self.assertEqual(call_args['review_history'], "History Content")
-            self.assertEqual(call_args['request'], "Test Request")
-
-if __name__ == "__main__":
-    unittest.main()
+    # D. Check for the new instruction
+    assert "cross-reference the User Request with the Knowledge Base" in prompt_sent_to_llm
+    assert "explicitly add a constraint in the Issue Body" in prompt_sent_to_llm
