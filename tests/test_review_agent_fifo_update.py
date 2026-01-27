@@ -61,8 +61,6 @@ def test_process_open_prs_updates_history_on_failure(git_repo, monkeypatch):
     mock_pr = MagicMock()
     mock_pr.number = 123
     mock_pr.head.ref = "feature/fail"
-    mock_pr.body = "## 🤖 Copilot Consultation Log\n\n- No consultation needed."
-    mock_pr.update = MagicMock() # Mock the update method to avoid side effects
     # We set origin to be the repo itself for this test
     mock_pr.fetch_ref = f"pull/{mock_pr.number}/head:pr-{mock_pr.number}"
 

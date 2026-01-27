@@ -18,24 +18,6 @@ class ReviewAgent:
         self.repo_path = repo_path
         self.github_client = github_client
 
-    def check_copilot_compliance(self, pr) -> bool:
-        """
-        Checks if the PR body contains the Copilot Consultation Log.
-        This method is stateless and calls pr.update() to ensure the
-        data is fresh on every execution.
-        """
-        logging.info(f"Checking for Copilot log in PR #{pr.number}...")
-        pr.update()  # Re-fetches the PR data from GitHub
-
-        pr_body = pr.body or ""  # Use empty string if body is None
-
-        if "## 🤖 Copilot Consultation Log" in pr_body:
-            logging.info(f"✅ Copilot log found for PR #{pr.number}.")
-            return True
-        else:
-            logging.warning(f"❌ Copilot log missing for PR #{pr.number}.")
-            return False
-
     def process_open_prs(self, open_prs):
         """
         Processes a list of PRs, runs tests, merges if pass, COMMENTS if fail.
@@ -46,20 +28,8 @@ class ReviewAgent:
 
         for pr in open_prs:
             logging.info(f"Processing PR #{pr.number}: '{pr.title}'")
-
-            # --- Check for Copilot Log Compliance ---
-            if not self.check_copilot_compliance(pr):
-                comment = (
-                    "## Compliance Check Failed\n\n"
-                    "This PR is missing the '## 🤖 Copilot Consultation Log'. "
-                    "Please add this section to your PR description."
-                )
-                pr.create_issue_comment(comment)
-                logging.warning(f"Skipping PR #{pr.number} due to missing Copilot log.")
-                continue # Move to the next PR
-
             local_pr_branch = f"pr-{pr.number}"
-            # Fix: Use pull/ID/head to ensure we fetch the latest commit of the PR
+            # 修正: 使用 pull/ID/head 確保抓到的是 PR 的最新 commit
             fetch_ref = f"pull/{pr.number}/head:{local_pr_branch}"
 
             try:
