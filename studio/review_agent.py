@@ -26,7 +26,7 @@ class ReviewAgent:
         location = os.getenv("LOCATION", "us-central1")
         if project_id:
              self.llm = ChatVertexAI(
-                model_name="gemini-1.5-pro",
+                model_name="gemini-2.5-pro",
                 project=project_id,
                 location=location,
                 temperature=0.1,
