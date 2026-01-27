@@ -44,8 +44,8 @@ class TestProductManager(unittest.TestCase):
 
         # Assert - LLM Model
         mock_chat_vertex_ai.assert_called_once_with(
-            model="gemini-2.5-pro",
-            temperature=0.0
+            model_name='gemini-2.5-pro',
+            max_output_tokens=8192
         )
 
         # Assert - Parser configuration
@@ -88,6 +88,28 @@ class TestProductManager(unittest.TestCase):
 
         # Verify return value is the parsed dict
         self.assertEqual(plan['product_intent'], "Solve X")
+
+    @patch('studio.pm.ChatVertexAI')
+    def test_llm_initialization_with_correct_parameters(self, mock_chat_vertex_ai):
+        """
+        Test that ProductManager initializes ChatVertexAI with the correct arguments.
+        This test is the specification for the fix.
+        """
+        # Arrange: We expect ChatVertexAI to be called with specific arguments.
+        mock_llm_instance = MagicMock()
+        mock_chat_vertex_ai.return_value = mock_llm_instance
+
+        # Act: Instantiate the ProductManager, which should trigger the LLM setup.
+        pm = ProductManager()
+
+        # Assert: Verify that ChatVertexAI was called exactly once with the correct
+        # model_name and max_output_tokens arguments.
+        mock_chat_vertex_ai.assert_called_once_with(
+            model_name='gemini-2.5-pro',
+            max_output_tokens=8192
+        )
+        self.assertEqual(pm.llm, mock_llm_instance)
+
 
 if __name__ == '__main__':
     unittest.main()
