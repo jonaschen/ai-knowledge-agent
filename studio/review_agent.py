@@ -224,7 +224,7 @@ class ReviewAgent:
         """Helper to commit review_history.md"""
         try:
             logging.info(f"Committing review_history.md to PR #{pr.number}...")
-            subprocess.run(['git', 'add', 'studio/review_history.md'], check=True, cwd=self.repo_path, capture_output=True)
+            subprocess.run(['git', 'add', '-f', 'studio/review_history.md'], check=True, cwd=self.repo_path, capture_output=True)
             commit_msg = f"docs: update review history for PR #{pr.number} failure [skip ci]"
             subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=self.repo_path, capture_output=True)
             push_ref = f"{branch_name}:{pr.head.ref}"
