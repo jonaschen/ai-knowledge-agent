@@ -205,6 +205,9 @@ class ReviewAgent:
                                 f"```text\n{error_log}\n```\n"
                                 f"\n</details>"
                             )
+                            feedback_parts.append(
+                                f"**Review History**: Jules need to update review_history.md after fix.\n"
+                            )
 
                         full_comment = f"## ❌ Automated Review Failed\n\n" + "\n\n---\n\n".join(feedback_parts)
                         
