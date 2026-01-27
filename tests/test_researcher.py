@@ -80,5 +80,30 @@ class TestResearcher(unittest.TestCase):
 
         self.assertCountEqual(actual_urls, expected_urls, "The search results should not contain low-quality sources.")
 
+    @patch('product.researcher.TavilyClient')
+    def test_find_books_constructs_correct_query(self, mock_tavily_client):
+        """
+        Given: A Researcher instance.
+        When: find_books is called with a topic.
+        Then: It should call the Tavily client with a correctly formatted query.
+        """
+        # --- Arrange ---
+        mock_tavily_instance = MagicMock()
+        mock_tavily_instance.search.return_value = {"results": []}
+        mock_tavily_client.return_value = mock_tavily_instance
+
+        researcher = Researcher(tavily_api_key="fake_key")
+        topic = "Artificial Intelligence"
+
+        # --- Act ---
+        researcher.find_books(topic)
+
+        # --- Assert ---
+        mock_tavily_instance.search.assert_called_once_with(
+            query='books on the topic of "Artificial Intelligence"',
+            search_depth="basic",
+            max_results=5
+        )
+
 if __name__ == '__main__':
     unittest.main()
