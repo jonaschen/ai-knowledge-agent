@@ -123,6 +123,21 @@ class ReviewAgent:
                 except Exception as e:
                     logging.warning(f"Cleanup failed: {e}")
 
+    def _commit_review_history(self, pr, branch_name):
+        """Helper to commit review_history.md"""
+        try:
+            logging.info(f"Committing review_history.md to PR #{pr.number}...")
+            subprocess.run(['git', 'add', '-f', 'studio/review_history.md'], check=True, cwd=self.repo_path, capture_output=True)
+            commit_msg = f"docs: update review history for PR #{pr.number} failure [skip ci]"
+            subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=self.repo_path, capture_output=True)
+            push_ref = f"{branch_name}:{pr.head.ref}"
+            logging.info(f"Pushing to origin {push_ref}...")
+            subprocess.run(['git', 'push', 'origin', push_ref], check=True, cwd=self.repo_path, capture_output=True)
+        except subprocess.CalledProcessError as e:
+             logging.error(f"Failed to commit/push history for PR #{pr.number}: {e}")
+             if hasattr(e, 'stderr') and e.stderr:
+                 logging.error(f"Git stderr: {e.stderr.decode()}")
+
     def analyze_failure(self, pytest_output: str, pr_id: int):
         analysis = {'pr_id': pr_id}
 
