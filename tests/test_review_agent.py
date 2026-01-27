@@ -6,6 +6,7 @@ from unittest.mock import patch, mock_open, MagicMock, ANY
 from datetime import datetime
 import re
 import os
+import json
 
 from studio.review_agent import ReviewAgent
 
@@ -147,6 +148,34 @@ class TestReviewAgent(unittest.TestCase):
 
             # This assertion will fail before the fix, creating our "Red" state.
             self.assertIn(f"docs: update review history for PR #{mock_pr.number}", log_output)
+
+class TestReviewAgentResilience(unittest.TestCase):
+
+    def setUp(self):
+        # Mock dependencies for ReviewAgent
+        self.mock_repo_path = "/tmp/mock_repo"
+        self.mock_github_client = MagicMock()
+        self.agent = ReviewAgent(self.mock_repo_path, self.mock_github_client)
+
+    @patch('studio.review_agent.ReviewAgent._call_ai_for_review')
+    def test_handle_empty_ai_response_gracefully(self, mock_call_ai):
+        """
+        Test that ReviewAgent does not crash when the AI returns an empty string.
+        This simulates a JSONDecodeError scenario.
+        """
+        # Arrange: Simulate the AI returning an empty, non-JSON string
+        mock_call_ai.return_value = ""
+
+        # Act: Run the review process
+        # We expect this to fail with a JSONDecodeError before the fix
+        # and handle it gracefully after the fix.
+        try:
+            result = self.agent.review_pr_code("dummy code")
+            # Assert: After the fix, the agent should return a specific error state, not crash.
+            self.assertIn("error", result)
+            self.assertEqual(result["error"], "AI response was not valid JSON.")
+        except json.JSONDecodeError:
+            self.fail("ReviewAgent crashed with JSONDecodeError instead of handling it.")
 
 if __name__ == "__main__":
     unittest.main()
