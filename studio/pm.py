@@ -13,7 +13,7 @@ class ProductManager:
     """
     def __init__(self):
         """Initializes the ProductManager with the standardized LLM wrapper."""
-        self.llm = ChatVertexAI(model="gemini-2.5-pro", temperature=0.0)
+        self.llm = ChatVertexAI(model_name="gemini-2.5-pro", max_output_tokens=8192)
         # You may need to define a prompt and parser as well
         # This is a sample structure
         self.prompt = ChatPromptTemplate.from_template(

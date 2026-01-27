@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import MagicMock, patch, mock_open
 import os
 from studio.architect import Architect
+from langchain_core.messages import AIMessage
+
 
 class TestArchitect(unittest.TestCase):
     @patch("studio.architect.Github")
@@ -123,3 +125,106 @@ class TestArchitect(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import tempfile
+
+class TestArchitectMemory(unittest.TestCase):
+
+    def setUp(self):
+        # Create temporary knowledge base files
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.rules_path = os.path.join(self.temp_dir.name, "rules.md")
+        self.history_path = os.path.join(self.temp_dir.name, "review_history.md")
+
+        with open(self.rules_path, "w") as f:
+            f.write("# Universal Rule 1\n- Do not mock Pydantic models.")
+
+        with open(self.history_path, "w") as f:
+            f.write("## [PR #92] Failure\n- Root Cause: FileNotFoundError")
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    @patch('studio.architect.ChatVertexAI')
+    @patch("studio.architect.Github")
+    @patch("os.getenv")
+    def test_init_raises_error_if_files_missing(self, mock_getenv, mock_github, mock_chat_model):
+        """
+        Ensures the Architect constructor fails if memory files don't exist.
+        """
+        mock_getenv.return_value = "fake_token"
+
+        file_map = {
+            self.rules_path: "# Universal Rule 1\n- Do not mock Pydantic models.",
+            self.history_path: "## [PR #92] Failure\n- Root Cause: FileNotFoundError",
+            "AGENTS.md": "mock constitution"
+        }
+
+        def open_side_effect(path, mode='r'):
+            if path in file_map:
+                return mock_open(read_data=file_map[path])()
+            raise FileNotFoundError(f"[Mock] File not found: {path}")
+
+        with patch("builtins.open", side_effect=open_side_effect):
+            with self.assertRaises(FileNotFoundError):
+                Architect(repo_name="test/repo", rules_path="non_existent_rules.md", history_path=self.history_path)
+
+            with self.assertRaises(FileNotFoundError):
+                Architect(repo_name="test/repo", rules_path=self.rules_path, history_path="non_existent_history.md")
+
+    @patch('studio.architect.StrOutputParser')
+    @patch('studio.architect.ChatPromptTemplate')
+    @patch('studio.architect.ChatVertexAI')
+    @patch("studio.architect.Github")
+    @patch("os.getenv")
+    def test_plan_feature_injects_knowledge_base_into_prompt(self, mock_getenv, mock_github, mock_chat_model, mock_prompt_cls, mock_parser_cls):
+        """
+        Verifies that rules.md and review_history.md are loaded and
+        injected into the system prompt for the LLM.
+        """
+        # Arrange
+        mock_getenv.return_value = "fake_token"
+
+        mock_chain = MagicMock()
+        # Mock the entire chain: prompt | llm | parser -> mock_chain
+        mock_prompt_cls.from_template.return_value.__or__.return_value.__or__.return_value = mock_chain
+
+        # Mock file system reads to provide specific content for each file
+        file_map = {
+            self.rules_path: "# Universal Rule 1\n- Do not mock Pydantic models.",
+            self.history_path: "## [PR #92] Failure\n- Root Cause: FileNotFoundError",
+            "AGENTS.md": "mock constitution"
+        }
+
+        def open_side_effect(path, mode='r'):
+            if path in file_map:
+                return mock_open(read_data=file_map[path])()
+            raise FileNotFoundError(f"[Mock] File not found: {path}")
+
+        with patch("builtins.open", side_effect=open_side_effect):
+            architect = Architect(repo_name="test/repo", rules_path=self.rules_path, history_path=self.history_path)
+
+        user_request = "Create a new component."
+
+        # Act
+        architect.plan_feature(user_request)
+
+        # Assert: Check the prompt template content
+        template_call_args, _ = mock_prompt_cls.from_template.call_args
+        system_prompt = template_call_args[0]
+
+        self.assertIn("=== KNOWLEDGE BASE ===", system_prompt)
+        self.assertIn("Before generating the Issue, cross-reference the User Request with the Knowledge Base.", system_prompt)
+        self.assertIn("If a known anti-pattern is detected", system_prompt)
+
+        # Assert: Check the data passed to the chain's invoke method
+        mock_chain.invoke.assert_called_once()
+        call_args, _ = mock_chain.invoke.call_args
+        invoked_payload = call_args[0]
+
+        self.assertIn("Universal Rule 1", invoked_payload['rules'])
+        self.assertIn("Do not mock Pydantic models.", invoked_payload['rules'])
+        self.assertIn("[PR #92] Failure", invoked_payload['review_history'])
+        self.assertIn("Root Cause: FileNotFoundError", invoked_payload['review_history'])
+        self.assertEqual(user_request, invoked_payload['request'])
