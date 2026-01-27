@@ -46,14 +46,14 @@ class Architect:
             with open(rules_path, "r") as f:
                 self.rules = f.read()
         except FileNotFoundError:
-            raise FileNotFoundError(f"❌ CRITICAL: Rules file not found at {rules_path}")
+            self.rules = ""
 
         # Load Active Memory (Review History)
         try:
             with open(history_path, "r") as f:
-                self.review_history = f.read()
+                self.history = f.read()
         except FileNotFoundError:
-            raise FileNotFoundError(f"❌ CRITICAL: Review history file not found at {history_path}")
+            self.history = ""
 
     def plan_feature(self, user_request: str) -> str:
         """
@@ -74,7 +74,7 @@ class Architect:
         {rules}
 
         RECENT FAILURES (review_history.md):
-        {review_history}
+        {history}
         =======================================
 
         === TEAM STRUCTURE ===
@@ -124,7 +124,7 @@ class Architect:
         return chain.invoke({
             "constitution": self.constitution,
             "rules": self.rules,
-            "review_history": self.review_history,
+            "history": self.history,
             "request": user_request
         })
 

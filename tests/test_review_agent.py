@@ -152,6 +152,7 @@ class TestReviewAgent(unittest.TestCase):
         pr = MagicMock()
         pr.number = 2
         pr.body = "No log here."
+        pr.draft = False
 
         # Mock subprocess just in case (fetch/checkout still happen)
         # Mock AI to return True (so we isolate compliance failure)
