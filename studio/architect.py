@@ -34,28 +34,16 @@ class Architect:
         
         # 載入憲法 (Constitution)
         # 注意：搬家後 AGENTS.md 應該還是在根目錄，所以路徑可能需要調整
-        try:
-            with open("AGENTS.md", "r") as f:
-                self.constitution = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: AGENTS.md not found. Architect is operating without a constitution.")
-            self.constitution = "Focus on reliability and modularity."
+        with open("AGENTS.md", "r") as f:
+            self.constitution = f.read()
 
         # Load Long-term Memory (Rules)
-        try:
-            with open("studio/rules.md", "r") as f:
-                self.rules = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: studio/rules.md not found.")
-            self.rules = "No specific rules defined yet."
+        with open("studio/rules.md", "r") as f:
+            self.rules = f.read()
 
         # Load Active Memory (Review History)
-        try:
-            with open("studio/review_history.md", "r") as f:
-                self.review_history = f.read()
-        except FileNotFoundError:
-            print("⚠️ Warning: studio/review_history.md not found.")
-            self.review_history = "No recent review history."
+        with open("studio/review_history.md", "r") as f:
+            self.review_history = f.read()
 
     def plan_feature(self, user_request: str) -> str:
         """
@@ -67,17 +55,17 @@ class Architect:
         You are the Chief Software Architect for an AI Software Studio.
         Your goal is to manage the development of the 'Deep Context Reader' project.
         
-        === YOUR CONSTITUTION (AGENTS.md) ===
-        {constitution}
-        =====================================
-        
-        === LONG-TERM MEMORY (Design Patterns & Rules) ===
-        {rules}
-        ==================================================
+        === KNOWLEDGE BASE ===
 
-        === ACTIVE MEMORY (Recent Failures) ===
+        --- CONSTITUTION (AGENTS.md) ---
+        {constitution}
+        
+        --- RULES (studio/rules.md) ---
+        {rules}
+
+        --- REVIEW HISTORY (studio/review_history.md) ---
         {review_history}
-        =======================================
+        ======================
 
         === TEAM STRUCTURE ===
         1. Studio Team (Internal Tools): Responsible for the management layer (studio/).
