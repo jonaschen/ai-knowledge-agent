@@ -6,7 +6,6 @@ import re
 from datetime import datetime
 from github import Github
 from dotenv import load_dotenv
-import json
 
 # Load environment variables
 load_dotenv()
@@ -231,30 +230,6 @@ class ReviewAgent:
 
         with open(history_path, 'a') as f:
             f.write(log_entry)
-
-    def _call_ai_for_review(self, code: str) -> str:
-        # This is a placeholder for the actual AI call.
-        # For the purpose of this fix, we assume this method exists and returns a string.
-        # In a real scenario, this would be a call to an LLM.
-        # For now, we don't need to implement it, just mock it in tests.
-        pass
-
-    def review_pr_code(self, code: str) -> dict:
-        """
-        Reviews code by calling an AI and parsing the JSON response.
-        """
-        ai_response_str = self._call_ai_for_review(code)
-
-        try:
-            # This is the line that is currently causing the crash
-            review_data = json.loads(ai_response_str)
-            return review_data
-        except (json.JSONDecodeError, TypeError):
-            # The Fix: Handle the error and return a structured error message.
-            return {
-                "error": "AI response was not valid JSON.",
-                "raw_response": ai_response_str
-            }
 
 # --- Entry Point ---
 if __name__ == '__main__':
