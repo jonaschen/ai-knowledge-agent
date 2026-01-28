@@ -12,6 +12,31 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import json
+
+# Define the log path as a constant so it can be patched in tests
+LOG_FILE_PATH = 'logs/product_events.log'
+
+def check_product_health() -> list[dict]:
+    """
+    Parses the product event log and returns a list of failure records.
+    """
+    failures = []
+    try:
+        with open(LOG_FILE_PATH, 'r') as f:
+            for line in f:
+                try:
+                    log_entry = json.loads(line)
+                    if log_entry.get('status') == 'FAILURE':
+                        failures.append(log_entry)
+                except json.JSONDecodeError:
+                    # Log parsing error, but don't crash the manager
+                    print(f"Warning: Could not parse log line: {line}")
+    except FileNotFoundError:
+        # It's not a failure if the log file doesn't exist yet
+        print("Log file not found. Assuming no failures.")
+
+    return failures
 
 def check_run_artifacts(log_path: str, mp3_path: str) -> tuple[bool, str]:
     """
