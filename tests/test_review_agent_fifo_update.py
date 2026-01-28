@@ -39,12 +39,19 @@ def git_repo(tmp_path):
 
     return repo_path
 
-def test_process_open_prs_updates_history_on_failure(git_repo):
+@patch('studio.review_agent.Github')
+@patch('studio.review_agent.ChatVertexAI')
+def test_process_open_prs_updates_history_on_failure(mock_chat_vertex_ai, mock_github, git_repo):
     """
     Verifies that when a PR fails tests:
     1. review_history.md is updated in the PR branch.
     2. The update is committed and pushed to the PR branch.
     """
+    # Configure the mock to return a valid JSON string inside a mock AIMessage object
+    mock_ai_message = MagicMock()
+    mock_ai_message.content = '{"review": "This is a mock review."}'
+    mock_chat_vertex_ai.return_value.invoke.return_value = mock_ai_message
+
     # Arrange: Create a failing feature branch
     run_git_command("git checkout -b feature/fail", git_repo)
     (git_repo / "tests/test_fail.py").write_text("def test_fail(): assert False")

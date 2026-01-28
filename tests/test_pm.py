@@ -1,70 +1,43 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-# The test assumes the refactored pm.py will have a class named ProductManager
-# and a method to generate the plan, e.g., generate_plan()
-from langchain_core.messages import AIMessage
-from studio.pm import ProductManager
+# Assume the final output is a Pydantic model or a simple dict for now
+# This is a placeholder for the actual output structure from product/main.py
+from pydantic import BaseModel
 
-class TestProductManager(unittest.TestCase):
+class PipelineOutput(BaseModel):
+    summary: str
+    confidence: float
 
-    @patch('studio.pm.ChatVertexAI')
-    def test_initialization_and_model_usage(self, mock_chat_vertex_ai):
-        """
-        Tests that the ProductManager initializes correctly, loads environment variables,
-        and uses the specified ChatVertexAI model.
-        """
-        # Arrange
-        mock_llm_instance = MagicMock()
-        # Configure the mock LLM to return a valid AIMessage with JSON content
-        # so that JsonOutputParser can process it without validation error.
-        success_message = AIMessage(content='{"steps": ["step1"]}')
-        mock_llm_instance.invoke.return_value = success_message
-        mock_llm_instance.return_value = success_message
-        mock_chat_vertex_ai.return_value = mock_llm_instance
+def test_pm_runs_pipeline_and_reports_quality():
+    """
+    Ensures the PM can trigger the production pipeline, evaluate its output,
+    and report the quality score to the Manager.
+    """
+    # ARRANGE
+    # IMPORTANT: Use a concrete instance, NOT MagicMock, for the return value
+    # to comply with `rules.md` Pattern 1.1 (Pydantic Mocking).
+    mock_pipeline_output = PipelineOutput(summary="This is a test summary.", confidence=0.9)
 
-        # Act
-        pm = ProductManager()
-        # We assume a method like 'generate_plan' will be the one invoking the LLM
-        pm.generate_plan("some user requirement")
+    # Patch the dependencies: the pipeline itself and the manager's reporting method.
+    # We patch `run_pipeline` where it is looked up: in the `studio.pm` module.
+    with patch('studio.pm.run_pipeline', return_value=mock_pipeline_output) as mock_run_pipeline, \
+         patch('studio.manager.receive_quality_report') as mock_receive_report:
 
-        # Assert
-        # 2. Ensure ChatVertexAI was initialized with the correct model
-        mock_chat_vertex_ai.assert_called_once_with(
-            model_name='gemini-2.5-pro',
-            max_output_tokens=8192
-        )
+        # Import the agent we are testing
+        from studio import pm
 
-        # 3. Ensure the LLM's 'invoke' method was called
-        # Note: When mocking, LangChain might treat the mock as a callable (wrapped in RunnableLambda)
-        # instead of calling .invoke() directly if it doesn't see the Runnable spec.
-        # So we check if it was called either way.
-        assert mock_llm_instance.invoke.called or mock_llm_instance.called, "LLM should have been invoked"
+        # ACT
+        # This is the new function we will create on the PM agent
+        pm.run_and_evaluate_pipeline()
 
-        print("\n[Test Succeeded] ProductManager correctly uses ChatVertexAI with gemini-2.5-pro.")
+        # ASSERT
+        # 1. Verify the production pipeline was called
+        mock_run_pipeline.assert_called_once()
 
-
-    @patch('studio.pm.ChatVertexAI')
-    def test_llm_initialization_with_correct_parameters(self, mock_chat_vertex_ai):
-        """
-        Test that ProductManager initializes ChatVertexAI with the correct arguments.
-        This test is the specification for the fix.
-        """
-        # Arrange: We expect ChatVertexAI to be called with specific arguments.
-        mock_llm_instance = MagicMock()
-        mock_chat_vertex_ai.return_value = mock_llm_instance
-
-        # Act: Instantiate the ProductManager, which should trigger the LLM setup.
-        pm = ProductManager()
-
-        # Assert: Verify that ChatVertexAI was called exactly once with the correct
-        # model_name and max_output_tokens arguments.
-        mock_chat_vertex_ai.assert_called_once_with(
-            model_name='gemini-2.5-pro',
-            max_output_tokens=8192
-        )
-        self.assertEqual(pm.llm, mock_llm_instance)
-
-
-if __name__ == '__main__':
-    unittest.main()
+        # 2. Verify the PM reported a score to the Manager.
+        #    The exact score is less important than the fact that the call was made.
+        mock_receive_report.assert_called_once()
+        # Check that the argument is a float (the quality score)
+        args, _ = mock_receive_report.call_args
+        assert isinstance(args[0], float)

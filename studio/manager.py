@@ -1,5 +1,4 @@
-from product import main as product_main
-from studio import review_agent
+from studio import review_agent, pm
 import os
 import time
 import subprocess
@@ -13,34 +12,17 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def check_run_artifacts(log_path: str, mp3_path: str) -> tuple[bool, str]:
+def receive_quality_report(score: float):
     """
-    Performs a health check on the output artifacts of a product run.
-
-    Args:
-        log_path: Path to the output log file.
-        mp3_path: Path to the output mp3 file.
-
-    Returns:
-        A tuple containing a boolean for health status and a reason string.
+    Receives and logs the quality score from the PM.
+    This function acts as a callback for the PM agent.
     """
-    # 1. Check for MP3 file existence
-    if not os.path.exists(mp3_path):
-        return False, f"Missing output file: {mp3_path}"
-
-    # 2. Check for log file existence
-    if not os.path.exists(log_path):
-        return False, f"Missing log file: {log_path}"
-
-    # 3. Check log file for errors
-    with open(log_path, 'r') as f:
-        log_content = f.read()
-        # Define sensitive error keywords
-        error_keywords = ["ERROR", "FAILURE", "Traceback"]
-        if any(keyword in log_content for keyword in error_keywords):
-            return False, "Error detected in log file."
-
-    return True, "Artifacts verified successfully."
+    logging.info(f"Received quality report from PM. Score: {score}")
+    # In the future, this function could trigger recovery actions if the score is below a threshold.
+    if score < 0.5:
+        logging.warning(f"Quality score {score} is below the threshold. Intervention may be required.")
+        # manager = ManagerAgent()
+        # manager.trigger_recovery(failure_type="quality")
 
 class ManagerAgent:
     """
@@ -58,15 +40,16 @@ class ManagerAgent:
 
 
     def run_health_check(self):
-        """Runs the full product pipeline with a default topic."""
-        print("--- Running Hourly Health Check ---")
+        """Delegates the health check to the Product Manager agent."""
+        print("--- Running Hourly Health Check (delegated to PM) ---")
         try:
-            # This call must be mockable in tests
-            product_main.run(topic='AI Agents')
-            print("--- Health Check PASSED ---")
+            # Delegate to the PM to run the pipeline and evaluate it
+            pm.run_and_evaluate_pipeline()
+            print("--- Health Check Complete ---")
         except Exception as e:
-            print(f"--- Health Check FAILED: {e} ---")
-            # Future: Log this failure to review_history.md
+            print(f"--- Health Check FAILED with an exception: {e} ---")
+            # Log this failure to review_history.md
+            logging.error(f"An exception occurred during the PM-led health check: {e}")
 
     def trigger_recovery(self, failure_type="logic"):
         """

@@ -191,10 +191,13 @@ class ReviewAgent:
                     # --- Step 4: Log Result (New) ---
                     failure_log = test_result.stdout + "\n" + test_result.stderr
                     log_pr_result(
+                        repo_path=self.repo_path,
                         pr_number=pr.number,
                         test_passed=tests_passed,
                         failure_log=failure_log if not tests_passed else None
                     )
+                    if not tests_passed and os.getenv("UPDATE_REVIEW_HISTORY") == "true":
+                        self._commit_review_history(pr, local_pr_branch)
 
                 except subprocess.CalledProcessError as e:
                     logging.error(f"Git command failed for PR #{pr.number}: {e}")
@@ -226,7 +229,7 @@ class ReviewAgent:
 
 # --- Module-level Functions for Logging ---
 
-def _analyze_failure(log: str) -> str:
+def _analyze_failure(repo_path: str, log: str) -> str:
     """
     Uses LLM to analyze the test failure log and provide a root cause analysis and suggestion.
     """
@@ -243,7 +246,6 @@ def _analyze_failure(log: str) -> str:
             max_output_tokens=2048
         )
 
-        repo_path = os.getcwd()
         rules_path = os.path.join(repo_path, 'studio', 'rules.md')
         rules_content = "No specific rules found."
         if os.path.exists(rules_path):
@@ -279,12 +281,12 @@ def _analyze_failure(log: str) -> str:
         return f"Failure analysis failed due to internal error: {e}"
 
 
-def log_pr_result(pr_number: int, test_passed: bool, failure_log: str | None = None):
+def log_pr_result(repo_path: str, pr_number: int, test_passed: bool, failure_log: str | None = None):
     """
     Logs the result of a PR test run to the review history.
     If the test failed, it triggers an analysis.
     """
-    history_path = os.path.join(os.getcwd(), 'studio', 'review_history.md')
+    history_path = os.path.join(repo_path, 'studio', 'review_history.md')
     os.makedirs(os.path.dirname(history_path), exist_ok=True)
 
     if test_passed:
@@ -292,7 +294,7 @@ def log_pr_result(pr_number: int, test_passed: bool, failure_log: str | None = N
     else:
         analysis_result = "No failure log provided."
         if failure_log:
-            analysis_result = _analyze_failure(failure_log)
+            analysis_result = _analyze_failure(repo_path, failure_log)
 
         log_entry = (
             f"## PR #{pr_number}: FAILED\n\n"

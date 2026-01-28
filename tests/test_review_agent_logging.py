@@ -12,8 +12,7 @@ tests/test_curator.py:25: AssertionError
 """
 
 class TestReviewAgentLogging(unittest.TestCase):
-    @patch('studio.review_agent.os.getcwd', return_value='')
-    def test_log_pr_result_success(self, mock_getcwd):
+    def test_log_pr_result_success(self):
         """
         Verify that a successful PR test run is logged correctly.
         """
@@ -24,17 +23,17 @@ class TestReviewAgentLogging(unittest.TestCase):
         m = mock_open()
         with patch("builtins.open", m):
             review_agent.log_pr_result(
+                repo_path="/app",
                 pr_number=pr_number,
                 test_passed=True
             )
 
         # Assert that the file was opened in append mode and the correct content was written
-        m.assert_called_once_with('studio/review_history.md', 'a', encoding='utf-8')
+        m.assert_called_once_with('/app/studio/review_history.md', 'a', encoding='utf-8')
         handle = m()
         handle.write.assert_called_once_with(expected_output)
 
-    @patch('studio.review_agent.os.getcwd', return_value='')
-    def test_log_pr_result_failure(self, mock_getcwd):
+    def test_log_pr_result_failure(self):
         """
         Verify that a failed PR test run triggers analysis and logs suggestions.
         """
@@ -55,14 +54,16 @@ class TestReviewAgentLogging(unittest.TestCase):
 
         m = mock_open()
         with patch("builtins.open", m), \
-             patch("studio.review_agent._analyze_failure", return_value=mock_analysis_result):
+             patch("studio.review_agent._analyze_failure", return_value=mock_analysis_result) as mock_analyze:
 
             review_agent.log_pr_result(
+                repo_path="/app",
                 pr_number=pr_number,
                 test_passed=False,
                 failure_log=SAMPLE_FAILURE_LOG
             )
+            mock_analyze.assert_called_once_with("/app", SAMPLE_FAILURE_LOG)
 
-        m.assert_called_once_with('studio/review_history.md', 'a', encoding='utf-8')
+        m.assert_called_once_with('/app/studio/review_history.md', 'a', encoding='utf-8')
         handle = m()
         handle.write.assert_called_once_with(expected_output)
