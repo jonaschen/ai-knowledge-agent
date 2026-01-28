@@ -1,12 +1,16 @@
 import unittest
-from unittest.mock import patch, call
+from unittest.mock import patch, call, mock_open
 import time
 import sys
 import subprocess
+import os
 
 from studio.manager import ManagerAgent
 from studio import manager
 from product import main as product_main
+
+# this import will fail until check_run_artifacts is implemented in studio/manager.py
+from studio.manager import check_run_artifacts
 
 class TestManagerHealthCheck(unittest.TestCase):
 
@@ -93,3 +97,61 @@ class TestManager(unittest.TestCase):
         # We expect a SystemExit or a similar clean exit mechanism.
         with self.assertRaises(SystemExit):
             manager.main()
+class TestManagerHealthChecks(unittest.TestCase):
+
+    def test_health_check_success(self):
+        """
+        GIVEN a successful run with an MP3 and a clean log
+        WHEN the manager checks the artifacts
+        THEN it should return a healthy status
+        """
+        mp3_path = "output/test_run.mp3"
+        log_path = "output/test_run.log"
+        log_content = "INFO: Pipeline started.\nINFO: Broadcaster completed.\nINFO: Pipeline completed successfully."
+
+        with patch('os.path.exists') as mock_exists, \
+             patch('builtins.open', mock_open(read_data=log_content)) as mock_file:
+
+            # Configure the mock to return True for both files
+            mock_exists.side_effect = lambda path: path in [mp3_path, log_path]
+
+            is_healthy, reason = check_run_artifacts(log_path, mp3_path)
+
+            self.assertTrue(is_healthy)
+            self.assertEqual(reason, "Artifacts verified successfully.")
+
+    def test_health_check_fails_on_missing_mp3(self):
+        """
+        GIVEN a run where the output MP3 is missing
+        WHEN the manager checks the artifacts
+        THEN it should return an unhealthy status
+        """
+        mp3_path = "output/test_run.mp3"
+        log_path = "output/test_run.log"
+
+        with patch('os.path.exists') as mock_exists:
+            # Configure the mock to return False for the mp3
+            mock_exists.side_effect = lambda path: path == log_path
+
+            is_healthy, reason = check_run_artifacts(log_path, mp3_path)
+
+            self.assertFalse(is_healthy)
+            self.assertIn("Missing output file", reason)
+
+    def test_health_check_fails_on_error_in_log(self):
+        """
+        GIVEN a run where the log file contains an error
+        WHEN the manager checks the artifacts
+        THEN it should return an unhealthy status
+        """
+        mp3_path = "output/test_run.mp3"
+        log_path = "output/test_run.log"
+        log_content = "INFO: Pipeline started.\nERROR: Broadcaster failed to generate audio."
+
+        with patch('os.path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=log_content)):
+
+            is_healthy, reason = check_run_artifacts(log_path, mp3_path)
+
+            self.assertFalse(is_healthy)
+            self.assertIn("Error detected in log file", reason)
