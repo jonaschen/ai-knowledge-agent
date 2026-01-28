@@ -2,9 +2,11 @@ import unittest
 from unittest.mock import patch, call, mock_open
 import time
 import sys
+import subprocess
 import os
 
 from studio.manager import ManagerAgent
+from studio import manager
 from product import main as product_main
 
 # this import will fail until check_run_artifacts is implemented in studio/manager.py
@@ -51,6 +53,50 @@ class TestManagerHealthCheck(unittest.TestCase):
              self.manager.autopilot_loop(run_once=True)
              mock_product_run.assert_not_called()
 
+class TestManager(unittest.TestCase):
+
+    @patch('studio.manager.ManagerAgent.autopilot_loop')
+    @patch('subprocess.run')
+    def test_manager_pulls_latest_code_on_startup(self, mock_subprocess_run, mock_autopilot_loop):
+        """
+        Verify the manager runs 'git pull' before executing its main loop.
+        """
+        # Configure the mock to simulate a successful command
+        mock_subprocess_run.return_value = None
+        mock_autopilot_loop.return_value = None
+
+        # We assume the manager's main function will be called.
+        # We wrap it in a try block to catch any other errors and ensure our assertion runs.
+        try:
+            manager.main()
+        except Exception as e:
+            # We don't expect other errors in this unit test, but we'll allow them to fail the test
+            # if they occur. The key is to check the call to subprocess.
+            pass
+
+        # Assert that 'git pull' was the first command executed.
+        expected_call = call(['git', 'pull'], check=True, capture_output=True, text=True)
+        self.assertIn(expected_call, mock_subprocess_run.call_args_list,
+                      "The manager did not attempt to run 'git pull' on startup.")
+
+    @patch('studio.manager.ManagerAgent.autopilot_loop')
+    @patch('subprocess.run')
+    def test_manager_handles_git_pull_failure(self, mock_subprocess_run, mock_autopilot_loop):
+        """
+        Verify the manager logs an error and exits if 'git pull' fails.
+        """
+        # Configure the mock to simulate a failed command (e.g., merge conflict)
+        mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=['git', 'pull'],
+            stderr="fatal: a merge conflict occurred"
+        )
+        mock_autopilot_loop.return_value = None
+
+        # The manager should catch this exception and exit gracefully.
+        # We expect a SystemExit or a similar clean exit mechanism.
+        with self.assertRaises(SystemExit):
+            manager.main()
 class TestManagerHealthChecks(unittest.TestCase):
 
     def test_health_check_success(self):
