@@ -45,7 +45,6 @@ class OptimizerAgent:
             
         # Simple filter: In a real system, this would use LLM to extract relevant context
         # For now, we assume the history contains relevant keywords (like filename)
-        target_name = os.path.basename(target_file)
         # Rudimentary filter to get last few KBs of history
         return history[-5000:] 
 
@@ -126,7 +125,8 @@ class OptimizerAgent:
                 f.write(new_code_content)
                 
             logging.info(f"✅ Applied optimized prompt to {target_file_path}")
-            # In Level 5, we would now trigger a git commit here.
+            # In Level 5, we would now trigger a git commit or PR creation here.
+            # For now, we assume the user/Manager triggers the commit loop.
         else:
             logging.error("Optimization failed to produce valid code.")
 
@@ -137,5 +137,3 @@ if __name__ == "__main__":
         
     optimizer = OptimizerAgent()
     optimizer.optimize_prompt(sys.argv[1])
-
-
