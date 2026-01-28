@@ -110,8 +110,12 @@ class ReviewAgent:
                 content = content[:-3]
             content = content.strip()
 
-            result = json.loads(content)
-            return result
+            try:
+                result = json.loads(content)
+                return result
+            except json.JSONDecodeError:
+                logging.error(f"AI Review failed: Could not decode JSON response: {content}")
+                return {'approved': True, 'comments': f"AI Review failed due to invalid JSON response."}
 
         except Exception as e:
             logging.error(f"AI Review failed: {e}")
@@ -142,12 +146,7 @@ class ReviewAgent:
                 ## --- Step 1: Compliance Check ---
                 compliance_ok = True
 
-                # --- Step 2: AI Code Review ---
-                logging.info("Running AI Code Review...")
-                review_result = self.review_code_llm(pr)
-                ai_approved = review_result.get('approved', True)
-
-                # --- Step 3: Run Tests (pytest) ---
+                # --- Step 2: Run Tests (pytest) ---
                 logging.info(f"Running pytest for PR #{pr.number}...")
                 test_result = subprocess.run(
                     [sys.executable, '-m', 'pytest'],
@@ -157,8 +156,16 @@ class ReviewAgent:
                 )
                 tests_passed = (test_result.returncode == 0)
 
+                # --- Step 3: Conditional AI Code Review ---
+                ai_approved = True
+                review_result = {}
+                if not tests_passed:
+                    logging.info("Tests failed, running AI Code Review for diagnostics...")
+                    review_result = self.review_code_llm(pr)
+                    ai_approved = review_result.get('approved', True)
+
                 # --- Decision Logic ---
-                if compliance_ok and ai_approved and tests_passed:
+                if compliance_ok and tests_passed:
                     logging.info(f"✅ All checks passed for PR #{pr.number}.")
                     passed_count += 1
                     if pr.draft:
@@ -176,11 +183,10 @@ class ReviewAgent:
                     if not compliance_ok:
                         feedback_parts.append("### 👮 Compliance Violation\n- ❌ Missing **Copilot Consultation Log** in PR description.\n- Please consult `AGENTS.md` and add the log.")
 
-                    if not ai_approved:
-                        feedback_parts.append(f"### 🧠 AI Code Review\n- ❌ **Changes Requested**\n{review_result.get('comments', 'No details provided.')}")
-
                     if not tests_passed:
                         feedback_parts.append(f"### 🧪 Test Failures\n- ❌ `pytest` failed.")
+                        if not ai_approved:
+                            feedback_parts.append(f"### 🧠 AI Code Review\n- ❌ **Changes Requested**\n{review_result.get('comments', 'No details provided.')}")
 
                     full_comment = f"## ❌ Automated Review Failed\n\n" + "\n\n---\n\n".join(feedback_parts)
 
