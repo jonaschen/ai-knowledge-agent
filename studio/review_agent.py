@@ -299,7 +299,7 @@ class ReviewAgent:
         # Ensure directory exists
         os.makedirs(os.path.dirname(history_path), exist_ok=True)
 
-        with open(history_path, 'a') as f:
+        with open(history_path, 'a', encoding='utf-8') as f:
             f.write(log_entry)
 
 # --- Entry Point ---

@@ -260,5 +260,36 @@ class TestReviewAgent(unittest.TestCase):
             # This assertion will fail before the fix, creating our "Red" state.
             self.assertIn(f"docs: update review history for PR #{mock_pr.number}", log_output)
 
+    def test_write_history_opens_with_correct_encoding(self):
+        """
+        Verify that write_history opens the history file in append mode with UTF-8 encoding.
+        """
+        # Arrange
+        analysis = {
+            'pr_id': 999,
+            'component': 'TestComponent',
+            'error_type': 'TestError',
+            'root_cause': 'Test Cause',
+            'fix_pattern': 'Test Fix',
+            'tags': '#test'
+        }
+        history_path = os.path.join(self.agent.repo_path, 'studio', 'review_history.md')
+
+        # Act
+        # We patch open and os.makedirs to isolate the file writing logic.
+        with patch("builtins.open", mock_open()) as mocked_file, \
+             patch("os.makedirs") as mock_makedirs, \
+             patch.dict(os.environ, {"UPDATE_REVIEW_HISTORY": "true"}):
+
+            self.agent.write_history(analysis)
+
+            # Assert
+            # 1. Check that the directory is created if it doesn't exist.
+            mock_makedirs.assert_called_once_with(os.path.dirname(history_path), exist_ok=True)
+
+            # 2. Check if open was called with the correct path, append mode ('a'), and encoding.
+            mocked_file.assert_called_once_with(history_path, 'a', encoding='utf-8')
+
+
 if __name__ == "__main__":
     unittest.main()
