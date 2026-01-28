@@ -12,35 +12,6 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def check_run_artifacts(log_path: str, mp3_path: str) -> tuple[bool, str]:
-    """
-    Performs a health check on the output artifacts of a product run.
-
-    Args:
-        log_path: Path to the output log file.
-        mp3_path: Path to the output mp3 file.
-
-    Returns:
-        A tuple containing a boolean for health status and a reason string.
-    """
-    # 1. Check for MP3 file existence
-    if not os.path.exists(mp3_path):
-        return False, f"Missing output file: {mp3_path}"
-
-    # 2. Check for log file existence
-    if not os.path.exists(log_path):
-        return False, f"Missing log file: {log_path}"
-
-    # 3. Check log file for errors
-    with open(log_path, 'r') as f:
-        log_content = f.read()
-        # Define sensitive error keywords
-        error_keywords = ["ERROR", "FAILURE", "Traceback"]
-        if any(keyword in log_content for keyword in error_keywords):
-            return False, "Error detected in log file."
-
-    return True, "Artifacts verified successfully."
-
 class ManagerAgent:
     """
     The Autopilot Daemon (Scrum Master).
