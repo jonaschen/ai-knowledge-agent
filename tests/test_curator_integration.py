@@ -41,7 +41,7 @@ class TestCuratorIntegration(unittest.TestCase):
         # --- Act ---
         curator = Curator()
         topic = "A Fictional Topic"
-        result = curator.search(topic)
+        result = curator.select_books(topic)
 
         # --- Assert ---
         # 1. Verify Researcher was called

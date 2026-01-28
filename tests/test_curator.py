@@ -159,7 +159,7 @@ class TestCurator(unittest.TestCase):
 
         # Act
         curator_instance = Curator()
-        results = curator_instance.search("some query")
+        results = curator_instance.select_books("some query")
 
         # Assert: Verify that _search_google_books was called and failed
         mock_google_api.assert_called_once()

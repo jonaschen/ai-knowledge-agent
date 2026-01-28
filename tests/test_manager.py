@@ -11,6 +11,49 @@ from product import main as product_main
 
 # this import will fail until check_run_artifacts is implemented in studio/manager.py
 from studio.manager import check_run_artifacts
+import json
+import logging
+from unittest.mock import patch
+
+# Assume a new function `check_product_health` will be added to manager.py
+from studio.manager import check_product_health
+
+def test_manager_can_parse_product_logs(tmp_path):
+    """
+    Tests that the manager can read a structured log file and identify failures.
+    """
+    # 1. Setup: Create a fake log file that the manager will read
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    log_file = log_dir / "product_events.log"
+
+    # 2. Arrange: Write structured log records to the fake file
+    with open(log_file, "w") as f:
+        # Simulate a success from the curator
+        f.write(json.dumps({
+            "name": "product.curator",
+            "level": "INFO",
+            "status": "SUCCESS",
+            "message": "Curated 5 books for query 'AI safety'."
+        }) + "\\n")
+
+        # Simulate a failure from the researcher
+        f.write(json.dumps({
+            "name": "product.researcher",
+            "level": "ERROR",
+            "status": "FAILURE",
+            "message": "API rate limit exceeded for Tavily."
+        }) + "\\n")
+
+    # 3. Act: Run the manager's health check function, pointing it to our test log
+    # We use patch to tell the manager where to find the logs for this test run.
+    with patch('studio.manager.LOG_FILE_PATH', str(log_file)):
+        failures = check_product_health()
+
+    # 4. Assert: Verify the manager correctly identified the failure
+    assert len(failures) == 1
+    assert failures[0]['name'] == 'product.researcher'
+    assert failures[0]['status'] == 'FAILURE'
 
 class TestManagerHealthCheck(unittest.TestCase):
 

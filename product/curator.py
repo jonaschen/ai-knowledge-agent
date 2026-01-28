@@ -14,6 +14,9 @@ from product.researcher import Researcher
 
 load_dotenv()
 
+# Get the logger configured in main.py
+logger = logging.getLogger('product.curator')
+
 # --- 0. 配置 LLM ---
 PROJECT_ID = os.getenv("PROJECT_ID", "project-391688be-0f68-469e-813")
 LOCATION = os.getenv("LOCATION", "us-central1")
@@ -77,21 +80,43 @@ class Curator:
             })
         return adapted_books
 
-    def search(self, query: str):
+    def select_books(self, query: str) -> list:
         """
-        Searches for a book, first using Google Books and falling back to Researcher.
+        Searches for books and logs the outcome.
         """
         try:
             print("Attempting search with primary API (Google Books)...")
-            return self._search_google_books(query)
+            results = self._search_google_books(query)
+            logger.info(
+                "Successfully curated books.",
+                extra={'status': 'SUCCESS', 'query': query, 'count': len(results)}
+            )
+            return results
         except HttpError as e:
             if e.resp.status == 429:
                 print("Google Books API rate limit exceeded. Falling back to Researcher.")
                 researcher = Researcher(tavily_api_key=self.tavily_api_key)
                 book_results = researcher.find_books(query)
-                return self._adapt_researcher_results(book_results)
+                adapted_results = self._adapt_researcher_results(book_results)
+                logger.info(
+                    "Successfully curated books via fallback.",
+                    extra={'status': 'SUCCESS', 'query': query, 'count': len(adapted_results)}
+                )
+                return adapted_results
             else:
-                raise e
+                logger.error(
+                    f"Failed to curate books due to HTTP error: {e}",
+                    extra={'status': 'FAILURE', 'query': query},
+                    exc_info=True
+                )
+                return []
+        except Exception as e:
+            logger.error(
+                f"Failed to curate books: {e}",
+                extra={'status': 'FAILURE', 'query': query},
+                exc_info=True
+            )
+            return []
 
 
 # --- 1. 定義狀態 ---
@@ -192,7 +217,7 @@ def search_node(state: CuratorState):
     
     print(f"--- 調整後的搜尋 Query: {query} ---")
     curator = Curator()
-    candidates = curator.search(query)
+    candidates = curator.select_books(query) # This will log the success or failure
     return {"raw_candidates": candidates}
 
 def validation_node(state: CuratorState):

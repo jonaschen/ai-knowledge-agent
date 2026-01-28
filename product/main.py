@@ -1,6 +1,29 @@
 import sys
 import os
 
+import logging
+from pythonjsonlogger import jsonlogger
+
+def setup_logging():
+    """Configures structured JSON logging for the product layer."""
+    logger = logging.getLogger('product')
+    logger.setLevel(logging.INFO)
+
+    # Prevent logs from propagating to the root logger
+    logger.propagate = False
+
+    # Ensure the log directory exists
+    log_path = 'logs/product_events.log'
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    # Write to a file
+    log_handler = logging.FileHandler(log_path)
+    formatter = jsonlogger.JsonFormatter('%(name)s %(levelname)s %(message)s')
+    log_handler.setFormatter(formatter)
+
+    # Add handler only if it doesn't exist to avoid duplicates
+    if not logger.handlers:
+        logger.addHandler(log_handler)
 # 導入我們寫好的模組
 from product.curator import app as curator_app
 from product.researcher import search_author_interview, get_transcript_text, get_hn_comments
@@ -86,6 +109,7 @@ def run(topic: str):
 
 
 def main():
+    setup_logging()
     # 1. 設定目標
     user_topic = "B2B Sales for Startups"
     if len(sys.argv) > 1:
