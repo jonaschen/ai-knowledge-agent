@@ -3,7 +3,9 @@ import time
 import subprocess
 import logging
 import sys
+import argparse
 from dotenv import load_dotenv
+from product import main as product_main
 
 load_dotenv()
 
@@ -17,36 +19,34 @@ class ManagerAgent:
     Includes Circuit Breakers to prevent infinite loops.
     """
     def __init__(self):
-        self.health_check_interval = 3600 # Run every hour (simulated)
         self.repo_path = os.getcwd()
         self.optimization_attempts = {} # Track attempts per component {component: count}
         self.MAX_OPTIMIZATION_RETRIES = 3 # Circuit Breaker limit
+        self.last_health_check_time = 0.0
 
-    def run_health_check(self) -> bool:
-        """
-        Runs the main product pipeline as a smoke test / golden set test.
-        Returns True if successful, False if failed.
-        """
-        logging.info("🏥 Running System Health Check (Smoke Test)...")
-        try:
-            # Run a standard test topic
-            # In a real scenario, this would run a 'Golden Set' of tests
-            result = subprocess.run(
-                [sys.executable, "-m", "product.main", "smoke_test_topic"],
-                capture_output=True,
-                text=True,
-                cwd=self.repo_path
-            )
-            
-            if result.returncode == 0:
-                logging.info("✅ Health Check Passed.")
-                return True
-            else:
-                logging.error(f"❌ Health Check Failed:\n{result.stderr[-500:]}")
-                return False
-        except Exception as e:
-            logging.error(f"Health check execution error: {e}")
-            return False
+    def run_health_check(self, last_check_time: float = 0.0) -> float:
+        """Runs the e2e health check if an hour has passed or if forced."""
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--run-now', action='store_true', help='Force health check to run immediately.')
+        # Use parse_known_args to avoid conflicts with other potential args
+        args, _ = parser.parse_known_args()
+
+        now = time.time()
+        one_hour_in_seconds = 3600
+
+        if args.run_now or (now - last_check_time > one_hour_in_seconds):
+            print("MANAGER: Running system health check...")
+            try:
+                # Assuming product.main has a runnable function
+                product_main.run_deep_context_reader('AI Agents')
+                print("MANAGER: Health check PASSED.")
+                return now
+            except Exception as e:
+                print(f"MANAGER: Health check FAILED: {e}")
+                # Future: Log this failure to review_history.md
+                return now # Update time to prevent immediate re-run
+        return last_check_time
+
 
     def trigger_recovery(self, failure_type="logic"):
         """
@@ -87,11 +87,8 @@ class ManagerAgent:
                 logging.info("👀 Checking for open PRs (Standup)...")
                 subprocess.run([sys.executable, "-m", "studio.review_agent"])
                 
-                # 2. Sprint Review: Health Check (Simulated Frequency - currently simplified)
-                # Uncomment below to enable active probing
-                # healthy = self.run_health_check()
-                # if not healthy:
-                #     self.trigger_recovery("logic") # Or "quality"
+                # 2. Sprint Review: Health Check
+                self.last_health_check_time = self.run_health_check(last_check_time=self.last_health_check_time)
                 
                 logging.info("💤 Sleeping for 60 seconds...")
                 time.sleep(60)

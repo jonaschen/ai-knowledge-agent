@@ -7,12 +7,7 @@ from product.researcher import search_author_interview, get_transcript_text, get
 from product.analyst_core import app as analyst_app
 from product.broadcaster import generate_podcast_script, synthesize_audio
 
-def main():
-    # 1. 設定目標
-    user_topic = "B2B Sales for Startups"
-    if len(sys.argv) > 1:
-        user_topic = sys.argv[1]
-        
+def run_deep_context_reader(user_topic: str):
     print(f"🔥 啟動學習系統，目標主題: {user_topic}")
     print("="*60)
     
@@ -83,6 +78,15 @@ def main():
     synthesize_audio(script)
     
     print("\n🎉 系統執行完畢！請打開 output_podcast.mp3 收聽你的學習成果。")
+
+
+def main():
+    # 1. 設定目標
+    user_topic = "B2B Sales for Startups"
+    if len(sys.argv) > 1:
+        user_topic = sys.argv[1]
+
+    run_deep_context_reader(user_topic)
 
 
 if __name__ == "__main__":
