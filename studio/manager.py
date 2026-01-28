@@ -135,9 +135,29 @@ class ManagerAgent:
                 return
 
 
-if __name__ == "__main__":
+def main():
+    """
+    Main execution loop for the Manager agent.
+    """
+    try:
+        logging.info("Manager starting. Attempting to pull latest codebase...")
+        # The check=True flag will raise CalledProcessError on a non-zero exit code.
+        subprocess.run(['git', 'pull'], check=True, capture_output=True, text=True)
+        logging.info("Codebase is up to date.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FATAL: Failed to pull latest code. A manual intervention may be required. Error: {e.stderr}")
+        # Exit to prevent the manager from running on a stale/conflicted codebase.
+        sys.exit(1)
+    except FileNotFoundError:
+        logging.error("FATAL: 'git' command not found. Ensure git is installed and in the system's PATH.")
+        sys.exit(1)
+
     manager = ManagerAgent()
     try:
         manager.autopilot_loop()
     except KeyboardInterrupt:
         print("\n🛑 Autopilot stopped by user.")
+
+
+if __name__ == "__main__":
+    main()
