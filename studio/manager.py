@@ -1,3 +1,4 @@
+from product import main as product_main
 import os
 import time
 import subprocess
@@ -23,6 +24,7 @@ class ManagerAgent:
         self.optimization_attempts = {} # Track attempts per component {component: count}
         self.MAX_OPTIMIZATION_RETRIES = 3 # Circuit Breaker limit
         self.history_path = os.path.join(self.repo_path, "studio", "review_history.md")
+        self.last_check_time = 0.0
 
 
     def _get_file_mtime(self, filepath):
@@ -51,31 +53,16 @@ class ManagerAgent:
         logging.info("✅ Process Audit Passed: Review history updated.")
         return True
         
-    def run_health_check(self) -> bool:
-        """
-        Runs the main product pipeline as a smoke test / golden set test.
-        Returns True if successful, False if failed.
-        """
-        logging.info("🏥 Running System Health Check (Smoke Test)...")
+    def run_health_check(self):
+        """Runs the full product pipeline with a default topic."""
+        print("--- Running Hourly Health Check ---")
         try:
-            # Run a standard test topic
-            # In a real scenario, this would run a 'Golden Set' of tests
-            result = subprocess.run(
-                [sys.executable, "-m", "product.main", "smoke_test_topic"],
-                capture_output=True,
-                text=True,
-                cwd=self.repo_path
-            )
-            
-            if result.returncode == 0:
-                logging.info("✅ Health Check Passed.")
-                return True
-            else:
-                logging.error(f"❌ Health Check Failed:\n{result.stderr[-500:]}")
-                return False
+            # This call must be mockable in tests
+            product_main.run(topic='AI Agents')
+            print("--- Health Check PASSED ---")
         except Exception as e:
-            logging.error(f"Health check execution error: {e}")
-            return False
+            print(f"--- Health Check FAILED: {e} ---")
+            # Future: Log this failure to review_history.md
 
     def trigger_recovery(self, failure_type="logic"):
         """
@@ -103,7 +90,7 @@ class ManagerAgent:
             # In full autonomy, we would:
             # subprocess.run([sys.executable, "-m", "studio.architect", "Fix the crash detected in health check..."])
 
-    def autopilot_loop(self):
+    def autopilot_loop(self, run_once=False):
         """
         The main infinite loop (The Scrum Sprint).
         """
@@ -126,19 +113,26 @@ class ManagerAgent:
                     self.audit_reviewer_compliance(start_time)
                 
                 # 3. Sprint Review: Health Check (Simulated Frequency - currently simplified)
-                # Uncomment below to enable active probing
-                # healthy = self.run_health_check()
-                # if not healthy:
-                #    self.trigger_recovery("logic") # Or "quality"
+                now = time.time()
+                is_time_to_check = (now - self.last_check_time) > 3600
+                is_forced_run = '--run-now' in sys.argv
+
+                if is_time_to_check or is_forced_run:
+                    self.run_health_check()
+                    self.last_check_time = now # Reset timer
                 
                 logging.info("💤 Sleeping for 60 seconds...")
                 time.sleep(60)
+
             except KeyboardInterrupt:
                 print("\n🛑 Autopilot stopped by user.")
                 break
             except Exception as e:
                 logging.error(f"Manager Loop Error: {e}")
                 time.sleep(60)
+
+            if run_once:
+                return
 
 
 if __name__ == "__main__":
