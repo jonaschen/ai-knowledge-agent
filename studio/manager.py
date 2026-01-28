@@ -62,7 +62,7 @@ class ManagerAgent:
         print("--- Running Hourly Health Check ---")
         try:
             # This call must be mockable in tests
-            product_main.run(topic='AI Agents')
+            product_main.run_pipeline(topic='AI Agents')
             print("--- Health Check PASSED ---")
         except Exception as e:
             print(f"--- Health Check FAILED: {e} ---")
