@@ -183,34 +183,18 @@ class ReviewAgent:
                         if not tests_passed:
                             feedback_parts.append(f"### 🧪 Test Failures\n- ❌ `pytest` failed.")
 
-                            # Existing Failure Analysis Logic
-                            error_log = test_result.stdout[-2000:] + "\n" + test_result.stderr[-2000:]
-                            analysis = self.analyze_failure(error_log, pr.number)
-                            # Only attempt to commit history if writing was successful
-                            if os.getenv("CI") or os.getenv("UPDATE_REVIEW_HISTORY"):
-                                self.write_history(analysis)
-                                # Commit history logic (Only if tests failed, we record it)
-                                self._commit_review_history(pr, local_pr_branch)
-                            else:
-                                logging.info("Skipping write/commit of review_history.md (not in CI/enabled).")
-
-                            feedback_parts.append(
-                                f"**Analysis**:\n"
-                                f"- **Component**: {analysis.get('component', 'Unknown')}\n"
-                                f"- **Error Type**: {analysis.get('error_type', 'Unknown')}\n"
-                                f"- **Root Cause**: {analysis.get('root_cause', 'Unknown')}\n\n"
-                                f"<details>\n<summary>Click to see Error Log</summary>\n\n"
-                                f"```text\n{error_log}\n```\n"
-                                f"\n</details>"
-                            )
-                            feedback_parts.append(
-                                f"**Review History**: Jules need to update review_history.md after fix.\n"
-                            )
-
                         full_comment = f"## ❌ Automated Review Failed\n\n" + "\n\n---\n\n".join(feedback_parts)
                         
                         logging.info(f"Posting error report to PR #{pr.number}...")
                         pr.create_issue_comment(full_comment)
+
+                    # --- Step 4: Log Result (New) ---
+                    failure_log = test_result.stdout + "\n" + test_result.stderr
+                    log_pr_result(
+                        pr_number=pr.number,
+                        test_passed=tests_passed,
+                        failure_log=failure_log if not tests_passed else None
+                    )
 
                 except subprocess.CalledProcessError as e:
                     logging.error(f"Git command failed for PR #{pr.number}: {e}")
@@ -240,68 +224,90 @@ class ReviewAgent:
              if hasattr(e, 'stderr') and e.stderr:
                  logging.error(f"Git stderr: {e.stderr.decode()}")
 
-    def analyze_failure(self, pytest_output: str, pr_id: int):
-        analysis = {'pr_id': pr_id}
+# --- Module-level Functions for Logging ---
 
-        # 1. Extract Component from the failing test file path
-        component_match = re.search(r'tests/test_(.*?)\.py', pytest_output)
-        if component_match:
-            analysis['component'] = component_match.group(1).capitalize()
-        else:
-            analysis['component'] = 'Unknown'
+def _analyze_failure(log: str) -> str:
+    """
+    Uses LLM to analyze the test failure log and provide a root cause analysis and suggestion.
+    """
+    project_id = os.getenv("PROJECT_ID")
+    if not project_id:
+        return "Skipped failure analysis (LLM not configured)."
 
-        # 2. Extract Root Cause from the line starting with 'E'
-        root_cause = "Could not determine root cause"
-        error_line_match = re.search(r"^E\s+(.*)$", pytest_output, re.MULTILINE)
-        if error_line_match:
-            root_cause = error_line_match.group(1).strip()
+    try:
+        llm = ChatVertexAI(
+            model_name="gemini-2.5-pro",
+            project=project_id,
+            location=os.getenv("LOCATION", "us-central1"),
+            temperature=0.1,
+            max_output_tokens=2048
+        )
 
-            # Append file context if available
-            file_context_match = re.search(r"^(tests/test_.*\.py):\d+: ", pytest_output, re.MULTILINE)
-            if file_context_match:
-                root_cause += f" in {file_context_match.group(1)}"
-        analysis['root_cause'] = root_cause
+        repo_path = os.getcwd()
+        rules_path = os.path.join(repo_path, 'studio', 'rules.md')
+        rules_content = "No specific rules found."
+        if os.path.exists(rules_path):
+            with open(rules_path, 'r', encoding='utf-8') as f:
+                rules_content = f.read()
 
-        # 3. Determine Error Type (currently rule-based)
-        error_type = 'Generic Test Failure'
-        if 'DID NOT RAISE' in root_cause and 'APITimeout' in root_cause:
-            error_type = 'APITimeout Handling Error'
-        analysis['error_type'] = error_type
+        prompt = f"""
+        You are a Senior Software Engineer acting as a debugger.
+        Analyze the following test failure log, consult the project rules, and provide a concise root cause analysis and a concrete suggestion for a fix.
 
-        return analysis
+        === PROJECT RULES (studio/rules.md) ===
+        {rules_content}
 
-    def write_history(self, analysis: dict):
-        # Only write to history if running in CI or explicitly enabled
-        if not os.getenv("CI") and not os.getenv("UPDATE_REVIEW_HISTORY"):
-            logging.info("Skipping write to review_history.md (not in CI and UPDATE_REVIEW_HISTORY not set).")
-            return
+        === TEST FAILURE LOG ===
+        {log}
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        === INSTRUCTIONS ===
+        1. Identify the specific error message and the test that failed.
+        2. Determine the most likely root cause of the failure.
+        3. Reference the project rules if they are relevant to the failure.
+        4. Provide a clear, actionable suggestion for how to fix the bug.
+        5. Return the analysis as a single markdown string.
 
-        # Ensure required keys exist to prevent errors, providing default values
-        component = analysis.get('component', 'Unknown Component')
-        error_type = analysis.get('error_type', 'Undefined Error')
-        root_cause = analysis.get('root_cause', 'No root cause specified.')
-        fix_pattern = analysis.get('fix_pattern', 'No fix pattern provided.')
-        tags = analysis.get('tags', '#untagged')
-        pr_id = analysis.get('pr_id', 'N/A')
+        Example response:
+        "Analysis: The failure in `test_curator.py` is due to a `pydantic_core.ValidationError`. As per `rules.md` (1.1), avoid using `MagicMock` with Pydantic models."
+        """
 
-        log_entry = f"""
-## [PR #{pr_id}] {component} Failure
-- **Date**: {today}
-- **Error Type**: {error_type}
-- **Root Cause**: {root_cause}
-- **Fix Pattern**: {fix_pattern}
-- **Tags**: {tags}
-"""
-        # Append to the history file
-        history_path = os.path.join(self.repo_path, 'studio', 'review_history.md')
+        response = llm.invoke([HumanMessage(content=prompt)])
+        return response.content.strip()
 
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(history_path), exist_ok=True)
+    except Exception as e:
+        logging.error(f"Failure analysis failed: {e}")
+        return f"Failure analysis failed due to internal error: {e}"
 
-        with open(history_path, 'a') as f:
-            f.write(log_entry)
+
+def log_pr_result(pr_number: int, test_passed: bool, failure_log: str | None = None):
+    """
+    Logs the result of a PR test run to the review history.
+    If the test failed, it triggers an analysis.
+    """
+    history_path = os.path.join(os.getcwd(), 'studio', 'review_history.md')
+    os.makedirs(os.path.dirname(history_path), exist_ok=True)
+
+    if test_passed:
+        log_entry = f"## PR #{pr_number}: PASSED\n\n---\n"
+    else:
+        analysis_result = "No failure log provided."
+        if failure_log:
+            analysis_result = _analyze_failure(failure_log)
+
+        log_entry = (
+            f"## PR #{pr_number}: FAILED\n\n"
+            f"### Review Suggestions\n"
+            f"{analysis_result}\n\n"
+            f"### Raw Failure Log\n"
+            f"```\n"
+            f"{failure_log}\n"
+            f"```\n"
+            f"---\n"
+        )
+
+    with open(history_path, 'a', encoding='utf-8') as f:
+        f.write(log_entry)
+
 
 # --- Entry Point ---
 if __name__ == '__main__':

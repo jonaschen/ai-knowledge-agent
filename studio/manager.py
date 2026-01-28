@@ -1,4 +1,5 @@
 from product import main as product_main
+from studio import review_agent
 import os
 import time
 import subprocess
@@ -27,32 +28,6 @@ class ManagerAgent:
         self.last_check_time = 0.0
 
 
-    def _get_file_mtime(self, filepath):
-        if os.path.exists(filepath):
-            return os.path.getmtime(filepath)
-        return 0
-        
-    def audit_reviewer_compliance(self, pr_processed_time):
-        """
-        [Meta-Monitoring] Verifies if Reviewer actually logged the result.
-        """
-        history_mtime = self._get_file_mtime(self.history_path)
-        
-        # Allow a small time buffer (e.g., 5 seconds delay is fine)
-        if history_mtime < pr_processed_time:
-            logging.warning("🚨 COMPLIANCE ALERT: Reviewer Agent failed to update review_history.md!")
-            logging.warning("   -> Triggering Self-Repair for Reviewer...")
-            
-            # Auto-Fix: Call Architect to check Reviewer's logging logic
-            subprocess.run([
-                sys.executable, "-m", "studio.architect", 
-                "Fix studio/review_agent.py: It failed to write to review_history.md after processing a PR. Check permission or logic error."
-            ])
-            return False
-        
-        logging.info("✅ Process Audit Passed: Review history updated.")
-        return True
-        
     def run_health_check(self):
         """Runs the full product pipeline with a default topic."""
         print("--- Running Hourly Health Check ---")
@@ -99,20 +74,13 @@ class ManagerAgent:
         while True:
             try:
                 # 1. Daily Standup: Monitor PRs (Keep the pipeline moving)
-                # This ensures any pending fixes from Jules/Optimizer are merged
                 logging.info("👀 Checking for open PRs (Standup)...")
 
-                # Mark time before running reviewer
-                start_time = time.time()
-
-                result = subprocess.run([sys.executable, "-m", "studio.review_agent"], capture_output=True, text=True)
+                # The review_agent script now handles its own logging, including successes.
+                # Manager's job is just to trigger it.
+                subprocess.run([sys.executable, "-m", "studio.review_agent"], check=False)
                 
-                # If Reviewer did some work (output contains specific keywords)
-                if "Processing PR" in result.stderr or "Processing PR" in result.stdout:
-                    # 2. Run Audit immediately
-                    self.audit_reviewer_compliance(start_time)
-                
-                # 3. Sprint Review: Health Check (Simulated Frequency - currently simplified)
+                # 2. Sprint Review: Health Check
                 now = time.time()
                 is_time_to_check = (now - self.last_check_time) > 3600
                 is_forced_run = '--run-now' in sys.argv
