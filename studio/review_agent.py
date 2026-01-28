@@ -140,15 +140,12 @@ class ReviewAgent:
                     ## --- Step 1: Compliance Check ---
                     logging.info("Running Compliance Check...")
                     compliance_ok = self.check_copilot_compliance(pr)
-                    # skip compliance check
-                    # compliance_ok = True
 
                     # --- Step 2: AI Code Review ---
-                    #logging.info("Running AI Code Review...")
-                    #review_result = self.review_code_llm(pr)
-                    # skip code review
-                    #ai_approved = review_result.get('approved', True)
-                    ai_approved = True
+                    logging.info("Running AI Code Review...")
+                    review_result = self.review_code_llm(pr)
+                    ai_approved = review_result.get('approved', True)
+
 
                     # --- Step 3: Run Tests (pytest) ---
                     logging.info(f"Running pytest for PR #{pr.number}...")
