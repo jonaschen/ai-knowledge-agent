@@ -182,11 +182,12 @@ Quality metrics are defined in `studio/rules.md` and treated as **first-class ar
 
 ## 6. Operational Roles
 
-### Manager — *The Autopilot*
+### Manager — *The Autopilot / Scrum Master*
 - Continuously monitors system health
 - Routes work to:
   - Architect (logic defects)
   - Optimizer (quality degradation)
+- Implements Circuit Breakers to prevent loops.
 
 ---
 
