@@ -12,21 +12,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class ManagerAgent:
     """
-    The Autopilot Daemon.
-    Monitors the system health and orchestrates the team (Architect, Optimizer, Reviewer).
+    The Autopilot Daemon (Scrum Master).
+    Monitors the system health, facilitates sprints, and orchestrates recovery.
+    Includes Circuit Breakers to prevent infinite loops.
     """
     def __init__(self):
         self.health_check_interval = 3600 # Run every hour (simulated)
         self.repo_path = os.getcwd()
+        self.optimization_attempts = {} # Track attempts per component {component: count}
+        self.MAX_OPTIMIZATION_RETRIES = 3 # Circuit Breaker limit
 
     def run_health_check(self) -> bool:
         """
-        Runs the main product pipeline as a smoke test.
+        Runs the main product pipeline as a smoke test / golden set test.
         Returns True if successful, False if failed.
         """
         logging.info("🏥 Running System Health Check (Smoke Test)...")
         try:
             # Run a standard test topic
+            # In a real scenario, this would run a 'Golden Set' of tests
             result = subprocess.run(
                 [sys.executable, "-m", "product.main", "smoke_test_topic"],
                 capture_output=True,
@@ -48,11 +52,21 @@ class ManagerAgent:
         """
         Decides who to call based on failure type.
         """
+        target_component = "product/analyst_core.py" # Example target based on failure analysis
+        
         if failure_type == "quality":
+            # Circuit Breaker Check
+            current_retries = self.optimization_attempts.get(target_component, 0)
+            if current_retries >= self.MAX_OPTIMIZATION_RETRIES:
+                logging.critical(f"🛑 Circuit Breaker Tripped! {target_component} failed optimization {current_retries} times.")
+                logging.critical("Manual intervention required. Stopping Autopilot.")
+                return # Stop trying
+
             # If it runs but produces bad output (detected by Verifier/Analyst score)
             logging.info("📞 Calling Optimizer Agent to refine prompts...")
-            # Ideally, we optimize the component that failed. Defaulting to Analyst.
-            subprocess.run([sys.executable, "-m", "studio.optimizer", "product/analyst_core.py"])
+            
+            subprocess.run([sys.executable, "-m", "studio.optimizer", target_component])
+            self.optimization_attempts[target_component] = current_retries + 1
             
         elif failure_type == "logic":
             # If it crashes -> Call Architect to fix code (currently manual trigger for safety)
@@ -62,22 +76,22 @@ class ManagerAgent:
 
     def autopilot_loop(self):
         """
-        The main infinite loop.
+        The main infinite loop (The Scrum Sprint).
         """
-        logging.info("🤖 Manager Agent (Autopilot) Started.")
+        logging.info("🤖 Manager Agent (Scrum Master) Started.")
         
         while True:
             try:
-                # 1. Monitor PRs (Keep the pipeline moving)
+                # 1. Daily Standup: Monitor PRs (Keep the pipeline moving)
                 # This ensures any pending fixes from Jules/Optimizer are merged
-                logging.info("👀 Checking for open PRs...")
+                logging.info("👀 Checking for open PRs (Standup)...")
                 subprocess.run([sys.executable, "-m", "studio.review_agent"])
                 
-                # 2. Health Check (Simulated Frequency - currently simplified)
+                # 2. Sprint Review: Health Check (Simulated Frequency - currently simplified)
                 # Uncomment below to enable active probing
                 # healthy = self.run_health_check()
                 # if not healthy:
-                #     self.trigger_recovery("logic")
+                #     self.trigger_recovery("logic") # Or "quality"
                 
                 logging.info("💤 Sleeping for 60 seconds...")
                 time.sleep(60)
@@ -90,8 +104,7 @@ class ManagerAgent:
 
 if __name__ == "__main__":
     manager = ManagerAgent()
-    manager.autopilot_loop()
-
-
-
-
+    try:
+        manager.autopilot_loop()
+    except KeyboardInterrupt:
+        print("\n🛑 Autopilot stopped by user.")
