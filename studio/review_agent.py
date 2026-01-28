@@ -125,82 +125,86 @@ class ReviewAgent:
             logging.info("No open pull requests found.")
             return
 
+        passed_count = 0
+        failed_count = 0
+
         for pr in open_prs:
             logging.info(f"Processing PR #{pr.number}: '{pr.title}'")
             local_pr_branch = f"pr-{pr.number}"
             fetch_ref = f"pull/{pr.number}/head:{local_pr_branch}"
 
             try:
-                try:
-                    # 1. Fetch and Checkout
-                    logging.info(f"Fetching and checking out PR #{pr.number}...")
-                    subprocess.run(['git', 'fetch', 'origin', fetch_ref], check=True, cwd=self.repo_path, capture_output=True)
-                    subprocess.run(['git', 'checkout', local_pr_branch], check=True, cwd=self.repo_path, capture_output=True)
+                # 1. Fetch and Checkout
+                logging.info(f"Fetching and checking out PR #{pr.number}...")
+                subprocess.run(['git', 'fetch', 'origin', fetch_ref], check=True, cwd=self.repo_path, capture_output=True)
+                subprocess.run(['git', 'checkout', local_pr_branch], check=True, cwd=self.repo_path, capture_output=True)
 
-                    ## --- Step 1: Compliance Check ---
-                    # logging.info("Running Compliance Check...")
-                    # compliance_ok = self.check_copilot_compliance(pr)
-                    compliance_ok = True
+                ## --- Step 1: Compliance Check ---
+                compliance_ok = True
 
-                    # --- Step 2: AI Code Review ---
-                    logging.info("Running AI Code Review...")
-                    review_result = self.review_code_llm(pr)
-                    ai_approved = review_result.get('approved', True)
+                # --- Step 2: AI Code Review ---
+                logging.info("Running AI Code Review...")
+                review_result = self.review_code_llm(pr)
+                ai_approved = review_result.get('approved', True)
 
+                # --- Step 3: Run Tests (pytest) ---
+                logging.info(f"Running pytest for PR #{pr.number}...")
+                test_result = subprocess.run(
+                    [sys.executable, '-m', 'pytest'],
+                    capture_output=True,
+                    text=True,
+                    cwd=self.repo_path
+                )
+                tests_passed = (test_result.returncode == 0)
 
-                    # --- Step 3: Run Tests (pytest) ---
-                    logging.info(f"Running pytest for PR #{pr.number}...")
-                    test_result = subprocess.run(
-                        [sys.executable, '-m', 'pytest'], 
-                        capture_output=True, 
-                        text=True, 
-                        cwd=self.repo_path
-                    )
-                    tests_passed = (test_result.returncode == 0)
-
-                    # --- Decision Logic ---
-                    if compliance_ok and ai_approved and tests_passed:
-                        logging.info(f"✅ All checks passed for PR #{pr.number}.")
-                        if pr.draft:
-                            logging.warning(f"PR #{pr.number} is a Draft. Cannot merge automatically.")
-                        else:
-                            logging.info(f"Merging PR #{pr.number}...")
-                            pr.merge(merge_method='squash')
-                            logging.info(f"🚀 Successfully merged PR #{pr.number}.")
-                    
+                # --- Decision Logic ---
+                if compliance_ok and ai_approved and tests_passed:
+                    logging.info(f"✅ All checks passed for PR #{pr.number}.")
+                    passed_count += 1
+                    if pr.draft:
+                        logging.warning(f"PR #{pr.number} is a Draft. Cannot merge automatically.")
                     else:
-                        logging.warning(f"❌ Checks failed for PR #{pr.number}.")
-                        
-                        # Prepare Consolidated Feedback
-                        feedback_parts = []
+                        logging.info(f"Merging PR #{pr.number}...")
+                        pr.merge(merge_method='squash')
+                        logging.info(f"🚀 Successfully merged PR #{pr.number}.")
+                else:
+                    logging.warning(f"❌ Checks failed for PR #{pr.number}.")
+                    failed_count += 1
+                    # Prepare Consolidated Feedback
+                    feedback_parts = []
 
-                        if not compliance_ok:
-                            feedback_parts.append("### 👮 Compliance Violation\n- ❌ Missing **Copilot Consultation Log** in PR description.\n- Please consult `AGENTS.md` and add the log.")
+                    if not compliance_ok:
+                        feedback_parts.append("### 👮 Compliance Violation\n- ❌ Missing **Copilot Consultation Log** in PR description.\n- Please consult `AGENTS.md` and add the log.")
 
-                        if not ai_approved:
-                            feedback_parts.append(f"### 🧠 AI Code Review\n- ❌ **Changes Requested**\n{review_result.get('comments', 'No details provided.')}")
+                    if not ai_approved:
+                        feedback_parts.append(f"### 🧠 AI Code Review\n- ❌ **Changes Requested**\n{review_result.get('comments', 'No details provided.')}")
 
-                        if not tests_passed:
-                            feedback_parts.append(f"### 🧪 Test Failures\n- ❌ `pytest` failed.")
+                    if not tests_passed:
+                        feedback_parts.append(f"### 🧪 Test Failures\n- ❌ `pytest` failed.")
 
-                        full_comment = f"## ❌ Automated Review Failed\n\n" + "\n\n---\n\n".join(feedback_parts)
-                        
-                        logging.info(f"Posting error report to PR #{pr.number}...")
-                        pr.create_issue_comment(full_comment)
+                    full_comment = f"## ❌ Automated Review Failed\n\n" + "\n\n---\n\n".join(feedback_parts)
 
-                    # --- Step 4: Log Result (New) ---
-                    failure_log = test_result.stdout + "\n" + test_result.stderr
-                    log_pr_result(
-                        pr_number=pr.number,
-                        test_passed=tests_passed,
-                        failure_log=failure_log if not tests_passed else None
-                    )
+                    logging.info(f"Posting error report to PR #{pr.number}...")
+                    pr.create_issue_comment(full_comment)
 
-                except subprocess.CalledProcessError as e:
-                    logging.error(f"Git command failed for PR #{pr.number}: {e}")
-                except Exception as e:
-                    logging.error(f"An unexpected error occurred: {e}")
+                # --- Step 4: Log Result ---
+                failure_log = test_result.stdout + "\n" + test_result.stderr
+                log_pr_result(
+                    pr_number=pr.number,
+                    test_passed=tests_passed,
+                    failure_log=failure_log if not tests_passed else None,
+                    repo_path=self.repo_path
+                )
 
+                # --- Step 5: Commit and Push History ---
+                self._commit_review_history(pr, local_pr_branch)
+
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Git command failed for PR #{pr.number}: {e}")
+                failed_count += 1
+            except Exception as e:
+                logging.error(f"An unexpected error occurred: {e}")
+                failed_count += 1
             finally:
                 # 4. Cleanup
                 try:
@@ -209,12 +213,23 @@ class ReviewAgent:
                 except Exception as e:
                     logging.warning(f"Cleanup failed: {e}")
 
+        return {
+            "total_processed": len(open_prs),
+            "passed": passed_count,
+            "failed": failed_count
+        }
+
     def _commit_review_history(self, pr, branch_name):
         """Helper to commit review_history.md"""
         try:
+            history_path = os.path.join(self.repo_path, 'studio', 'review_history.md')
+            if not os.path.exists(history_path):
+                with open(history_path, 'w') as f:
+                    f.write("# Review History\n")
+
             logging.info(f"Committing review_history.md to PR #{pr.number}...")
             subprocess.run(['git', 'add', '-f', 'studio/review_history.md'], check=True, cwd=self.repo_path, capture_output=True)
-            commit_msg = f"docs: update review history for PR #{pr.number} failure [skip ci]"
+            commit_msg = f"docs: Update review history for {branch_name}"
             subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=self.repo_path, capture_output=True)
             push_ref = f"{branch_name}:{pr.head.ref}"
             logging.info(f"Pushing to origin {push_ref}...")
@@ -223,6 +238,7 @@ class ReviewAgent:
              logging.error(f"Failed to commit/push history for PR #{pr.number}: {e}")
              if hasattr(e, 'stderr') and e.stderr:
                  logging.error(f"Git stderr: {e.stderr.decode()}")
+
 
 # --- Module-level Functions for Logging ---
 
@@ -279,12 +295,14 @@ def _analyze_failure(log: str) -> str:
         return f"Failure analysis failed due to internal error: {e}"
 
 
-def log_pr_result(pr_number: int, test_passed: bool, failure_log: str | None = None):
+def log_pr_result(pr_number: int, test_passed: bool, failure_log: str | None = None, repo_path: str = ''):
     """
     Logs the result of a PR test run to the review history.
     If the test failed, it triggers an analysis.
     """
-    history_path = os.path.join(os.getcwd(), 'studio', 'review_history.md')
+    if not repo_path:
+        repo_path = os.getcwd()
+    history_path = os.path.join(repo_path, 'studio', 'review_history.md')
     os.makedirs(os.path.dirname(history_path), exist_ok=True)
 
     if test_passed:
@@ -334,15 +352,19 @@ if __name__ == '__main__':
 
         if len(open_prs) == 0:
             print("😴 No PRs to review.")
+            summary = {"total_processed": 0, "passed": 0, "failed": 0}
         else:
             print("🚀 DEBUG: Initializing ReviewAgent...")
             agent = ReviewAgent(repo_path=cwd, github_client=gh_client)
 
             print("🔥 DEBUG: Starting processing...")
-            agent.process_open_prs(open_prs)
+            summary = agent.process_open_prs(open_prs)
             print("✅ DEBUG: Process finished.")
+
+        print(json.dumps(summary))
 
     except Exception as e:
         print(f"❌ CRITICAL ERROR: {e}")
         import traceback
         traceback.print_exc()
+        exit(1)

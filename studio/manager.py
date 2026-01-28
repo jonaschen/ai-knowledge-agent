@@ -107,7 +107,20 @@ class ManagerAgent:
 
                 # The review_agent script now handles its own logging, including successes.
                 # Manager's job is just to trigger it.
-                subprocess.run([sys.executable, "-m", "studio.review_agent"], check=False)
+                result = subprocess.run(
+                    [sys.executable, "-m", "studio.review_agent"],
+                    check=False,
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    try:
+                        summary = json.loads(result.stdout)
+                        logging.info(f"Review Agent Summary: {summary}")
+                    except json.JSONDecodeError:
+                        logging.error("Failed to decode review agent summary.")
+                else:
+                    logging.error(f"Review Agent failed with error: {result.stderr}")
                 
                 # 2. Sprint Review: Health Check
                 now = time.time()

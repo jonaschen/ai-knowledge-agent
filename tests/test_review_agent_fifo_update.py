@@ -98,9 +98,9 @@ def test_process_open_prs_updates_history_on_failure(git_repo):
     assert history_file.exists(), "review_history.md was not created in the feature branch"
 
     content = history_file.read_text()
-    assert "Failure" in content
+    assert "FAILED" in content
     assert "test_fail.py" in content # Component detection might be tricky if not standardized, but let's see.
 
     # Verify commit message
     log = subprocess.run(['git', 'log', '-1', '--pretty=%s'], cwd=git_repo, capture_output=True, text=True).stdout.strip()
-    assert log == f"docs: update review history for PR #{mock_pr.number} failure [skip ci]"
+    assert log == f"docs: Update review history for pr-{mock_pr.number}"

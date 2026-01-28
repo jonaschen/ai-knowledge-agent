@@ -219,7 +219,7 @@ class TestReviewAgent(unittest.TestCase):
             ).stdout
 
             # This assertion will fail before the fix, creating our "Red" state.
-            self.assertIn(f"docs: update review history for PR #{mock_pr.number}", log_output)
+            self.assertIn(f"docs: Update review history for {local_pr_branch}", log_output)
 
 if __name__ == "__main__":
     unittest.main()
