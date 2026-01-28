@@ -7,7 +7,7 @@ from product.researcher import search_author_interview, get_transcript_text, get
 from product.analyst_core import app as analyst_app
 from product.broadcaster import generate_podcast_script, synthesize_audio
 
-def run(topic: str):
+def run_pipeline(topic: str):
     """
     Runs the full product pipeline for a given topic.
     """
@@ -22,8 +22,8 @@ def run(topic: str):
     selected_book = curator_result.get("selected_book")
     
     if not selected_book:
-        print("❌ 選書失敗，流程終止。")
-        return
+        print(f"🔴 [FAILURE] Curator could not select a book for the topic: '{topic}'. Halting pipeline.")
+        sys.exit(1)
 
     print(f"✅ 鎖定書籍: 《{selected_book['title']}》")
     
@@ -78,11 +78,17 @@ def run(topic: str):
     
     # 1. 生成劇本
     script = generate_podcast_script(analyst_result["draft_analysis"])
-    
+    if not script:
+        print(f"🔴 [FAILURE] Broadcaster failed to generate script for '{selected_book['title']}'.")
+        sys.exit(1)
+
     # 2. 合成語音
-    synthesize_audio(script)
+    audio_file_path = synthesize_audio(script)
+    if not audio_file_path:
+        print(f"🔴 [FAILURE] Broadcaster failed to generate audio for '{selected_book['title']}'.")
+        sys.exit(1)
     
-    print("\n🎉 系統執行完畢！請打開 output_podcast.mp3 收聽你的學習成果。")
+    print(f"\n🎉 系統執行完畢！請打開 {audio_file_path} 收聽你的學習成果。")
 
 
 def main():
@@ -90,7 +96,7 @@ def main():
     user_topic = "B2B Sales for Startups"
     if len(sys.argv) > 1:
         user_topic = sys.argv[1]
-    run(user_topic)
+    run_pipeline(user_topic)
 
 
 if __name__ == "__main__":

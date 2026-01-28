@@ -75,14 +75,14 @@ def generate_podcast_script(technical_doc: str):
         print(f"❌ 劇本生成失敗: {e}")
         return []
 
-def synthesize_audio(script: List[dict]):
+def synthesize_audio(script: List[dict]) -> str | None:
     """
     [重構版] 分段合成策略 (Segment & Stitch)
     解決 Chirp 3 在長 SSML 中產生幻覺的問題。
     """
     if not script:
         print("❌ 錯誤: 劇本為空。")
-        return
+        return None
 
     print(f"--- 正在合成語音 (Segment & Stitch Mode) - 共 {len(script)} 個片段 ---")
     
@@ -137,8 +137,10 @@ def synthesize_audio(script: List[dict]):
         with open(OUTPUT_FILE, "wb") as out:
             out.write(combined_audio)
         print(f"✅ 完整 Podcast 已生成: {OUTPUT_FILE} (大小: {len(combined_audio)/1024:.2f} KB)")
+        return OUTPUT_FILE
     else:
         print("❌ 生成失敗，音頻為空。")
+        return None
 
 # 測試用
 if __name__ == "__main__":

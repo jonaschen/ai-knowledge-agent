@@ -19,7 +19,7 @@ class TestManagerHealthCheck(unittest.TestCase):
         self.manager = ManagerAgent()
         self.manager.last_check_time = 0.0
 
-    @patch('product.main.run')
+    @patch('product.main.run_pipeline')
     @patch('time.time')
     @patch('subprocess.run')
     def test_health_check_runs_after_one_hour(self, mock_subprocess, mock_time, mock_product_run):
@@ -35,7 +35,7 @@ class TestManagerHealthCheck(unittest.TestCase):
         self.manager.autopilot_loop(run_once=True)
         mock_product_run.assert_called_once_with(topic='AI Agents')
 
-    @patch('product.main.run')
+    @patch('product.main.run_pipeline')
     @patch('subprocess.run')
     def test_health_check_runs_immediately_with_cli_flag(self, mock_subprocess, mock_product_run):
         """Verify '--run-now' flag triggers the health check immediately."""
@@ -43,7 +43,7 @@ class TestManagerHealthCheck(unittest.TestCase):
             self.manager.autopilot_loop(run_once=True)
             mock_product_run.assert_called_once_with(topic='AI Agents')
 
-    @patch('product.main.run')
+    @patch('product.main.run_pipeline')
     @patch('time.time')
     @patch('subprocess.run')
     def test_health_check_does_not_run_on_normal_loop(self, mock_subprocess, mock_time, mock_product_run):
